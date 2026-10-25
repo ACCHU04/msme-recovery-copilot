@@ -272,6 +272,7 @@ and 7 Oct 2026 (5.75%). Earlier dates return `rate_unavailable` instead of guess
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): system design, data flow, what breaks first at 10× traffic, stack choices, front-end states
 - [`docs/API.md`](docs/API.md): business rules, error format, every API route and who can call it
+- [`docs/DEPLOY.md`](docs/DEPLOY.md): hosting so it opens fast (Mumbai regions, always-on backend)
 - [`docs/DATA.md`](docs/DATA.md): tables, constraints, indexes, tested backup and restore, file upload rules
 
 ## Demo data for every role
