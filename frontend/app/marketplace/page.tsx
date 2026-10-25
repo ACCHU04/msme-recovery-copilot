@@ -11,26 +11,34 @@ interface Opp {
   orderType: string; closesInDays: number; paymentDays: number; summary: string; requirements: [string, string][];
 }
 const OPPS: Opp[] = [
-  { id: "o1", buyer: "Sample Buyer A: Vindhya Heavy Equipment", title: "Precision machined shafts", industry: "Machine components", location: "Coimbatore, Tamil Nadu",
+  { id: "o1", buyer: "Vindhya Heavy Equipment Ltd", title: "Precision machined shafts", industry: "Machine components", location: "Coimbatore, Tamil Nadu",
     value: 4800000, orderType: "Long term (12 months)", closesInDays: 12, paymentDays: 30, summary: "CNC-machined shafts for conveyor assemblies, monthly call-offs.",
     requirements: [["Quantity", "2,000 to 5,000 units a month"], ["Quality", "ISO 9001 preferred"], ["Delivery", "Coimbatore plant"], ["Payment terms", "30 days from delivery"]] },
-  { id: "o2", buyer: "Sample Buyer B: Konkan Fresh Foods", title: "Food-grade corrugated cartons", industry: "Packaging", location: "Pune, Maharashtra",
+  { id: "o2", buyer: "Konkan Fresh Foods Pvt Ltd", title: "Food-grade corrugated cartons", industry: "Packaging", location: "Pune, Maharashtra",
     value: 1150000, orderType: "One-time order", closesInDays: 6, paymentDays: 60, summary: "Five-ply cartons with food-grade inner coating for a festive season run.",
     requirements: [["Quantity", "40,000 cartons"], ["Compliance", "FSSAI-compliant materials"], ["Delivery", "Pune warehouse"], ["Payment terms", "60 days from invoice"]] },
-  { id: "o3", buyer: "Sample Buyer C: Sahyadri Auto Systems", title: "Sheet metal brackets", industry: "Automotive parts", location: "Chakan, Maharashtra",
+  { id: "o3", buyer: "Sahyadri Auto Systems Ltd", title: "Sheet metal brackets", industry: "Automotive parts", location: "Chakan, Maharashtra",
     value: 2400000, orderType: "Long term (6 months)", closesInDays: 20, paymentDays: 45, summary: "Laser-cut and bent brackets for two-wheeler sub-assemblies.",
     requirements: [["Quantity", "15,000 units a month"], ["Tolerances", "As per drawing"], ["Delivery", "Chakan line-side"], ["Payment terms", "45 days from acceptance"]] },
-  { id: "o4", buyer: "Sample Buyer D: Godavari Power Panels", title: "Electrical enclosures", industry: "Electrical", location: "Hyderabad, Telangana",
+  { id: "o4", buyer: "Godavari Power Panels Pvt Ltd", title: "Electrical enclosures", industry: "Electrical", location: "Hyderabad, Telangana",
     value: 1750000, orderType: "Long term (12 months)", closesInDays: 15, paymentDays: 90, summary: "Powder-coated MS enclosures for distribution panels.",
     requirements: [["Quantity", "300 enclosures a month"], ["Finish", "Powder coat, RAL 7035"], ["Delivery", "Hyderabad"], ["Payment terms", "90 days from invoice"]] },
-  { id: "o5", buyer: "Sample Buyer E: Malabar Spice Exports", title: "Printed laminated pouches", industry: "Packaging", location: "Kochi, Kerala",
+  { id: "o5", buyer: "Malabar Spice Exports LLP", title: "Printed laminated pouches", industry: "Packaging", location: "Kochi, Kerala",
     value: 640000, orderType: "One-time order", closesInDays: 9, paymentDays: 15, summary: "Multi-layer printed pouches for 100 g and 250 g spice packs.",
     requirements: [["Quantity", "2 lakh pouches"], ["Print", "8 colour gravure"], ["Delivery", "Kochi"], ["Payment terms", "15 days from delivery"]] },
+  { id: "o6", buyer: "Sabarmati Process Controls Ltd", title: "Stainless steel valve manifolds", industry: "Machine components", location: "Ahmedabad, Gujarat",
+    value: 3100000, orderType: "Long term (6 months)", closesInDays: 14, paymentDays: 30, summary: "SS316 machined valve blocks for chemical dosing skids.",
+    requirements: [["Quantity", "450 manifolds a month"], ["Material", "SS316 with mill test certificate"], ["Delivery", "Vatva GIDC, Ahmedabad"], ["Payment terms", "30 days from acceptance"]] },
 ];
 const SUPPLIERS = [
-  { name: "Sample Supplier: Tunga Precision Works", industry: "Machine components", location: "Shivamogga, Karnataka", size: "Micro" },
-  { name: "Sample Supplier: Hemavathi Corrugators", industry: "Packaging", location: "Mysuru, Karnataka", size: "Small" },
-  { name: "Sample Supplier: Narmada Fab Tech", industry: "Electrical", location: "Indore, Madhya Pradesh", size: "Small" },
+  { name: "Tunga Precision Works", industry: "Machine components", location: "Shivamogga, Karnataka", size: "Micro" },
+  { name: "Hemavathi Corrugators", industry: "Packaging", location: "Mysuru, Karnataka", size: "Small" },
+  { name: "Narmada Fab Tech", industry: "Electrical", location: "Indore, Madhya Pradesh", size: "Small" },
+  { name: "Peenya Eco Pack Solutions", industry: "Packaging", location: "Bengaluru, Karnataka", size: "Micro" },
+  { name: "Kovai Gear & Shafts", industry: "Automotive parts", location: "Coimbatore, Tamil Nadu", size: "Small" },
+  { name: "Deccan Switchgear Enclosures", industry: "Electrical", location: "Hyderabad, Telangana", size: "Small" },
+  { name: "Bhosari Sheet Metal Stampings", industry: "Automotive parts", location: "Pune, Maharashtra", size: "Micro" },
+  { name: "GIDC Machined Fasteners", industry: "Machine components", location: "Rajkot, Gujarat", size: "Micro" },
 ];
 const SAVED_KEY = "ls03.savedOpps";
 
@@ -121,7 +129,7 @@ export default function MarketplacePage() {
                     <div className={cx("flex flex-wrap items-start gap-4 rounded-xl border p-4", sel === o.id ? "border-brand-600 bg-blue-50/40" : "border-slate-200")}>
                       <span className="rounded-xl bg-slate-100 p-3 text-slate-600"><Building2 size={22} aria-hidden /></span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs text-slate-500">{o.buyer}</p>
+                        <p className="text-xs text-slate-500">{o.buyer} · sample listing</p>
                         <p className="font-semibold">{o.title}</p>
                         <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600">
                           <Badge>{o.industry}</Badge><span className="flex items-center gap-1"><MapPin size={12} aria-hidden /> {o.location}</span>
@@ -149,7 +157,7 @@ export default function MarketplacePage() {
           {opp && (
             <Card>
               <div className="flex items-start justify-between gap-2">
-                <div><p className="text-xs text-slate-500">{opp.buyer}</p><h2 className="text-xl font-bold">{opp.title}</h2><p className="text-sm text-slate-600">{opp.summary}</p></div>
+                <div><p className="text-xs text-slate-500">{opp.buyer} · sample listing</p><h2 className="text-xl font-bold">{opp.title}</h2><p className="text-sm text-slate-600">{opp.summary}</p></div>
                 <button type="button" aria-label="Close details" onClick={() => setSel(null)} className="rounded p-1 hover:bg-slate-100"><X size={18} /></button>
               </div>
               <div className="mt-4 flex gap-2">
@@ -178,3 +186,4 @@ export default function MarketplacePage() {
     </div>
   );
 }
+

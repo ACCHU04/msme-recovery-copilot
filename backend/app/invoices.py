@@ -11,7 +11,7 @@ from recovery_engine import (
 )
 from recovery_engine.rates import STATUTORY_MULTIPLIER
 
-from .evaluate import _d, _jsonable, _money, evaluate_case
+from .evaluate import _d, _jsonable, _money, evaluate_case, load_business_bundle
 from .store import Store
 
 ZERO = Decimal("0.00")
@@ -43,18 +43,17 @@ def invoice_status(amount: Decimal, paid: Decimal, entry: dict, as_of: date) -> 
 
 def list_invoices(store: Store, business_id: str, as_of: date | None = None) -> list[dict]:
     as_of = as_of or date.today()
+    bundle = load_business_bundle(store, business_id)
     out: list[dict] = []
-    for case in store.select("cases", business_id=business_id):
-        if case.get("status") == "archived":
-            continue
-        rows = store.select("invoices", case_id=case["id"])
+    for case in bundle["cases"]:
+        rows = bundle["invoices_by_case"].get(case["id"], [])
         if not rows:
             continue
-        buyer = store.get("buyers", case["buyer_id"]) or {}
-        ev = evaluate_case(store, case["id"], as_of)
+        buyer = bundle["buyers"].get(case["buyer_id"], {})
+        ev = evaluate_case(store, case["id"], as_of, bundle=bundle)
         by_id = {e["invoice_id"]: e for e in ev["invoices"]}
         for inv in rows:
-            pays = sorted(store.select("payments", invoice_id=inv["id"]), key=lambda p: p["paid_on"])
+            pays = sorted(bundle["payments_by_inv"].get(inv["id"], []), key=lambda p: p["paid_on"])
             paid = sum((_money(p["amount"]) for p in pays if _d(p["paid_on"]) <= as_of), ZERO)
             amount = _money(inv["amount"])
             entry = by_id[inv["id"]]

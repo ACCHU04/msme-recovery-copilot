@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 
 from recovery_engine.due_date import human
 from ..auth import AuthContext, approved_user, current_business_id, supplier
-from ..evaluate import ENGINE_VERSION, evaluate_case, invoice_outstanding, settlement_from_totals
+from ..evaluate import (ENGINE_VERSION, _group_by, evaluate_case, invoice_outstanding,
+                        load_business_bundle, settlement_from_totals)
 from copilot import parse_promise
 
 from pydantic import ValidationError
@@ -102,15 +103,18 @@ def create_case(body: CaseIn, store: Store = Depends(get_store),
 def list_cases(store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
     """Case list for the ageing board: live totals and bucket per case."""
     out = []
-    for case in store.select("cases", business_id=bid):
+    bundle = load_business_bundle(store, bid)
+    for case in bundle["cases"]:
         if case["status"] == "archived":
             continue
-        buyer = store.get("buyers", case["buyer_id"])
-        summary = {"totals": None, "bucket": None, "eligibility": None}
+
+        buyer = bundle["buyers"].get(case["buyer_id"])
+        summary = {"totals": None, "bucket": None, "eligibility": None, "next_action": None}
         try:
-            ev = evaluate_case(store, case["id"])
+            ev = evaluate_case(store, case["id"], bundle=bundle)
             summary = {"totals": ev["totals"], "bucket": ev["bucket"],
-                       "eligibility": ev["eligibility"]["verdict"]}
+                       "eligibility": ev["eligibility"]["verdict"],
+                       "next_action": ev["next_action"]}
         except ValueError:
             pass  # no invoices yet
         out.append({**case, "buyer_name": buyer["name"] if buyer else None, **summary})
@@ -122,8 +126,10 @@ def get_case(case_id: str, store: Store = Depends(get_store),
              bid: str = Depends(current_business_id)):
     case = _own_case(store, case_id, bid)
     invoices = store.select("invoices", case_id=case_id)
+    inv_ids = [inv["id"] for inv in invoices]
+    pays_by_inv = _group_by(store.select("payments", invoice_id=inv_ids) if inv_ids else [], "invoice_id")
     for inv in invoices:
-        inv["payments"] = sorted(store.select("payments", invoice_id=inv["id"]),
+        inv["payments"] = sorted(pays_by_inv.get(inv["id"], []),
                                  key=lambda p: p["paid_on"])
     evidence = store.select("evidence_items", case_id=case_id)
     return {**case, "buyer": store.get("buyers", case["buyer_id"]),
@@ -299,6 +305,7 @@ def check_document(request: Request, file: UploadFile = File(...), invoice_id: s
     if invoice_id:
         invoice, case = _own_invoice(store, invoice_id, bid)
         buyer = store.get("buyers", case["buyer_id"])
+
     business = store.get("businesses", bid)
     if not request.app.state.llm_limiter.allow(f"doc:{bid}"):
         raise HTTPException(429, "Too many documents in a short time. Wait a minute and try again.")

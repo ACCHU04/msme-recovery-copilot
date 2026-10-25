@@ -59,8 +59,9 @@ def _bucket(last_day: date | None, as_of: date, interest_running: bool) -> str:
     return "overdue_interest_accruing" if interest_running else "overdue"
 
 
-def _eligibility(store: Store, case: Row, invoices: list[Row]):
-    business = store.get("businesses", case["business_id"]) or {}
+def _eligibility(store: Store, case: Row, invoices: list[Row], business: Row | None = None):
+    if business is None:
+        business = store.get("businesses", case["business_id"]) or {}
     return check_eligibility(
         size=business.get("size"),
         activity=business.get("activity"),
@@ -69,6 +70,35 @@ def _eligibility(store: Store, case: Row, invoices: list[Row]):
         contract_date=_d(case.get("contract_date"))
         or min(_d(i["invoice_date"]) for i in invoices),
     )
+
+
+def _group_by(rows: list[Row], key: str) -> dict[str, list[Row]]:
+    out: dict[str, list[Row]] = {}
+    for r in rows:
+        out.setdefault(r[key], []).append(r)
+    return out
+
+
+def load_business_bundle(store: Store, business_id: str) -> dict[str, Any]:
+    """Batch-load a business's active cases and all related rows in a small fixed number
+    of queries instead of N+1 roundtrips per case and per invoice."""
+    business = store.get("businesses", business_id) or {}
+    cases = [c for c in store.select("cases", business_id=business_id)
+             if c.get("status") != "archived"]
+    buyers = {b["id"]: b for b in store.select("buyers", business_id=business_id)}
+    case_ids = [c["id"] for c in cases]
+    invoices = store.select("invoices", case_id=case_ids) if case_ids else []
+    inv_ids = [i["id"] for i in invoices]
+    return {
+        "business": business,
+        "cases": cases,
+        "buyers": buyers,
+        "invoices_by_case": _group_by(invoices, "case_id"),
+        "payments_by_inv": _group_by(store.select("payments", invoice_id=inv_ids) if inv_ids else [], "invoice_id"),
+        "evidence_by_case": _group_by(store.select("evidence_items", case_id=case_ids) if case_ids else [], "case_id"),
+        "promises_by_case": _group_by(store.select("promises", case_id=case_ids) if case_ids else [], "case_id"),
+        "followups_by_case": _group_by(store.select("followups", case_id=case_ids) if case_ids else [], "case_id"),
+    }
 
 
 def invoice_outstanding(store: Store, invoice: Row, on: date) -> Decimal:
@@ -99,16 +129,35 @@ def invoice_outstanding(store: Store, invoice: Row, on: date) -> Decimal:
     return res.total_outstanding
 
 
-def evaluate_case(store: Store, case_id: str, as_of: date | None = None) -> dict:
+def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
+                  bundle: dict[str, Any] | None = None) -> dict:
     as_of = as_of or date.today()
-    case = store.get("cases", case_id)
+    if bundle is not None:
+        case = next((c for c in bundle["cases"] if c["id"] == case_id), None)
+        invoices = bundle["invoices_by_case"].get(case_id, [])
+        business = bundle["business"]
+        buyer = bundle["buyers"].get(case["buyer_id"], {}) if case else {}
+        payments_by_inv = bundle["payments_by_inv"]
+        evidence_rows = bundle["evidence_by_case"].get(case_id, [])
+        promise_rows = bundle["promises_by_case"].get(case_id, [])
+        followup_rows = bundle["followups_by_case"].get(case_id, [])
+    else:
+        case = store.get("cases", case_id)
+        invoices = store.select("invoices", case_id=case_id) if case else []
+        business = (store.get("businesses", case["business_id"]) or {}) if case else {}
+        buyer = None
+        inv_ids = [i["id"] for i in invoices]
+        payments_by_inv = _group_by(store.select("payments", invoice_id=inv_ids) if inv_ids else [], "invoice_id")
+        evidence_rows = None
+        promise_rows = None
+        followup_rows = None
+
     if case is None:
         raise LookupError("case not found")
-    invoices = store.select("invoices", case_id=case_id)
     if not invoices:
         raise ValueError("case has no invoices")
 
-    elig = _eligibility(store, case, invoices)
+    elig = _eligibility(store, case, invoices, business=business)
     interest_allowed = elig.verdict == Verdict.ELIGIBLE
 
     out_invoices = []
@@ -117,7 +166,7 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None) -> dict
     for inv in sorted(invoices, key=lambda r: r["invoice_date"]):
         amount = _money(inv["amount"])
         pays = [Payment(_d(p["paid_on"]), _money(p["amount"]))
-                for p in store.select("payments", invoice_id=inv["id"])]
+                for p in payments_by_inv.get(inv["id"], [])]
         paid = sum((p.amount for p in pays if p.paid_on <= as_of), ZERO)
         simple_principal = max(amount - paid, ZERO)
         entry: dict[str, Any] = {"invoice_id": inv["id"], "number": inv["number"],
@@ -175,8 +224,11 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None) -> dict
                                if res.total_outstanding > 0 else "not_due")
         out_invoices.append(entry)
 
-    copilot = run_copilot(store, case, invoices, out_invoices, elig.verdict.value,
-                          tot_p + tot_i, as_of)
+    copilot = run_copilot(
+        store, case, invoices, out_invoices, elig.verdict.value, tot_p + tot_i, as_of,
+        business=business, buyer=buyer, payments_by_inv=payments_by_inv,
+        evidence_rows=evidence_rows, promise_rows=promise_rows, followup_rows=followup_rows,
+    )
     return {
         "case_id": case_id,
         "as_of": as_of.isoformat(),
@@ -195,23 +247,36 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None) -> dict
 
 
 def run_copilot(store: Store, case: Row, invoices: list[Row], evaluated: list[dict],
-                verdict: str, total: Decimal, as_of: date) -> dict:
-    business = store.get("businesses", case["business_id"]) or {}
-    buyer = store.get("buyers", case["buyer_id"]) or {}
-    evidence = {e["kind"]: e["status"] for e in store.select("evidence_items",
-                                                             case_id=case["id"])}
+                verdict: str, total: Decimal, as_of: date, *,
+                business: Row | None = None, buyer: Row | None = None,
+                payments_by_inv: dict[str, list[Row]] | None = None,
+                evidence_rows: list[Row] | None = None,
+                promise_rows: list[Row] | None = None,
+                followup_rows: list[Row] | None = None) -> dict:
+    if business is None:
+        business = store.get("businesses", case["business_id"]) or {}
+    if buyer is None:
+        buyer = store.get("buyers", case["buyer_id"]) or {}
+    if evidence_rows is None:
+        evidence_rows = store.select("evidence_items", case_id=case["id"])
+    evidence = {e["kind"]: e["status"] for e in evidence_rows}
     findings, readiness = reconcile(case, business, invoices, evidence, verdict)
 
-    promise_rows = store.select("promises", case_id=case["id"])
+    if promise_rows is None:
+        promise_rows = store.select("promises", case_id=case["id"])
+    if payments_by_inv is None:
+        inv_ids = [inv["id"] for inv in invoices]
+        payments_by_inv = _group_by(store.select("payments", invoice_id=inv_ids) if inv_ids else [], "invoice_id")
     payments = [{"paid_on": _d(p["paid_on"]), "amount": _money(p["amount"])}
-                for inv in invoices for p in store.select("payments", invoice_id=inv["id"])]
+                for inv in invoices for p in payments_by_inv.get(inv["id"], [])]
     statuses = promise_statuses(
         [{"id": p["id"], "made_on": _d(p["made_on"]), "due_date": _d(p["due_date"]),
           "amount": _money(p["amount"])} for p in promise_rows], payments, as_of)
     texts = {p["id"]: p.get("source_text") for p in promise_rows}
 
-    fu_rows = sorted(store.select("followups", case_id=case["id"]),
-                     key=lambda f: f["sent_on"])
+    if followup_rows is None:
+        followup_rows = store.select("followups", case_id=case["id"])
+    fu_rows = sorted(followup_rows, key=lambda f: f["sent_on"])
     followups = [Followup(int(f["step"]), _d(f["sent_on"]), bool(f.get("reply_received")))
                  for f in fu_rows if _d(f["sent_on"]) <= as_of]
 

@@ -27,6 +27,7 @@ export interface CaseSummary {
   totals: Totals | null;
   bucket: Bucket | null;
   eligibility: Verdict | null;
+  next_action?: NextAction | null;
 }
 
 export interface Buyer {
@@ -54,7 +55,7 @@ export interface Invoice {
 
 export interface EvidenceItem { id: string; case_id: string; kind: EvidenceKind; status: EvidenceStatus }
 
-export interface CaseDetail extends Omit<CaseSummary, "buyer_name" | "totals" | "bucket" | "eligibility"> {
+export interface CaseDetail extends Omit<CaseSummary, "buyer_name" | "totals" | "bucket" | "eligibility" | "next_action"> {
   buyer: Buyer;
   invoices: Invoice[];
   evidence: EvidenceItem[];

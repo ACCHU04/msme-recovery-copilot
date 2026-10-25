@@ -39,20 +39,24 @@ export async function middleware(req: NextRequest) {
   });
 
   let viewer: Viewer | null = null;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) {
-    const { data: p } = await supabase.from("profiles")
-      .select("full_name, email, role, approval_status, business_name")
-      .eq("id", user.id).maybeSingle();
-    viewer = {
-      id: user.id,
-      email: user.email ?? p?.email ?? "",
-      name: p?.full_name ?? (user.email ?? "").split("@")[0],
-      role: p?.role ?? null,
-      approval: p?.approval_status ?? null,
-      emailVerified: Boolean(user.email_confirmed_at),
-      businessName: p?.business_name ?? null,
-    };
+  let user: { id: string; email?: string; email_confirmed_at?: string | null } | null = null;
+  if (hadSession) {
+    const { data } = await supabase.auth.getUser();
+    user = data.user;
+    if (user) {
+      const { data: p } = await supabase.from("profiles")
+        .select("full_name, email, role, approval_status, business_name")
+        .eq("id", user.id).maybeSingle();
+      viewer = {
+        id: user.id,
+        email: user.email ?? p?.email ?? "",
+        name: p?.full_name ?? (user.email ?? "").split("@")[0],
+        role: p?.role ?? null,
+        approval: p?.approval_status ?? null,
+        emailVerified: Boolean(user.email_confirmed_at),
+        businessName: p?.business_name ?? null,
+      };
+    }
   }
 
   const d = decide(req.nextUrl.pathname, viewer, hadSession, req.nextUrl.search);
