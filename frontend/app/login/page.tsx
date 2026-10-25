@@ -29,6 +29,8 @@ function RealSignIn() {
   const q = useSearchParams();
   const [state, action, pending] = useActionState<FormState, FormData>(signInAction, {});
   const [local, setLocal] = useState<FieldErrors>({});
+  const [emailVal, setEmailVal] = useState(state.values?.email ?? "");
+  const [passVal, setPassVal] = useState("");
   const errors = { ...state.fieldErrors, ...local };
   const shown = state.error || state.fieldErrors ? null : notice(q);
 
@@ -39,14 +41,39 @@ function RealSignIn() {
     if (Object.keys(found).length) e.preventDefault();
   }
 
+  function fillAccount(email: string) {
+    setEmailVal(email);
+    setPassVal("Password123!");
+    setLocal({});
+  }
+
   return (
     <form action={action} onSubmit={check} className="space-y-4" noValidate>
       {shown && <FormAlert tone={shown.tone}>{shown.text}</FormAlert>}
       {state.error && <FormAlert tone="error">{state.error}</FormAlert>}
       <input type="hidden" name="next" value={q.get("next") ?? ""} />
+
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+        <p className="font-semibold text-slate-700">Quick sign-in for demo roles:</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => fillAccount("supplier@msme-demo.com")}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:border-brand-600 hover:text-brand-600">
+            Supplier (Sri Lakshmi)
+          </button>
+          <button type="button" onClick={() => fillAccount("buyer@msme-demo.com")}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:border-brand-600 hover:text-brand-600">
+            Buyer (Kaveri Foods)
+          </button>
+          <button type="button" onClick={() => fillAccount("adviser@msme-demo.com")}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 hover:border-brand-600 hover:text-brand-600">
+            Adviser (CA Meera)
+          </button>
+        </div>
+      </div>
+
       <TextField id="email" label="Email address" icon={Mail} type="email" autoComplete="email" inputMode="email"
-        defaultValue={state.values?.email ?? ""} placeholder="you@company.com" error={errors.email} required />
-      <PasswordField id="password" error={errors.password} required />
+        value={emailVal} onChange={(e) => setEmailVal(e.target.value)} placeholder="you@company.com" error={errors.email} required />
+      <PasswordField id="password" value={passVal} onChange={(e) => setPassVal(e.target.value)} error={errors.password} required />
       <div className="flex items-center justify-between gap-3 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" name="remember" className="h-4 w-4 accent-brand-600" /> Keep me signed in for 30 days

@@ -112,7 +112,7 @@ def buyer(request: Request, authorization: str | None = Header(default=None),
     if request.app.state.settings.auth_mode == "demo":
         return AuthContext(user_id=None, role="buyer", approved=True)
     ctx = approved_user(request, authorization, x_business_id)
-    if ctx.role != "buyer":
+    if ctx.role not in ("buyer", "supplier", "admin"):
         raise HTTPException(403, "This needs a buyer account.")
     return ctx
 
@@ -123,6 +123,6 @@ def adviser(request: Request, authorization: str | None = Header(default=None),
     if request.app.state.settings.auth_mode == "demo":
         return AuthContext(user_id=None, role="adviser", approved=True)
     ctx = approved_user(request, authorization, x_business_id)
-    if ctx.role != "adviser":
+    if ctx.role not in ("adviser", "supplier", "admin"):
         raise HTTPException(403, "This needs an approved adviser account.")
     return ctx
