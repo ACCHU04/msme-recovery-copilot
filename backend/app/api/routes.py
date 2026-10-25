@@ -20,7 +20,7 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, files as files_mod, legal_ai, reminders as reminders_mod
+from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, files as files_mod, legal_ai, notifications as notif_mod, reminders as reminders_mod
 from ..evaluate import _jsonable
 from ..schemas import (ConfirmationIn, QRCheckIn, ReminderDismissIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
@@ -1125,3 +1125,63 @@ def evidence_pack_pdf(case_id: str, as_of: date | None = None, store: Store = De
     name = "".join(ch if ch.isalnum() else "-" for ch in (case.get("buyer") or {}).get("name", "case"))[:40]
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="evidence-pack-{name}.pdf"', "Cache-Control": "no-store"})
+
+
+# ---------------------------------------------------------------- C1 notifications
+@router.get("/notifications/reminders")
+def get_reminders(as_of: date | None = None, store: Store = Depends(get_store),
+                  bid: str = Depends(current_business_id)):
+    """Reminders for invoices due soon, promises due/broken, and s.16 interest start."""
+    return {"reminders": notif_mod.find_supplier_reminders(store, bid, as_of)}
+
+
+@router.post("/notifications/send-digest")
+def send_reminder_digest(request: Request, as_of: date | None = None,
+                         store: Store = Depends(get_store),
+                         bid: str = Depends(current_business_id),
+                         ctx: AuthContext = Depends(supplier)):
+    """Dispatch today's reminder digest to the supplier via Resend."""
+    settings = request.app.state.settings
+    api_key = settings.resend_api_key
+    if not api_key:
+        raise HTTPException(503, "Email delivery is not configured (RESEND_API_KEY missing).")
+    to_email = settings.notification_email
+    if not to_email and ctx.user_id:
+        p = store.get("profiles", ctx.user_id) or {}
+        to_email = p.get("email")
+    if not to_email:
+        to_email = "acchuachutha004@gmail.com"
+    biz = store.get("businesses", bid) or {}
+    biz_name = biz.get("name") or "MSME Supplier"
+    reminders = notif_mod.find_supplier_reminders(store, bid, as_of)
+    today = as_of or date.today()
+    html = notif_mod.build_digest_html(biz_name, reminders, today)
+    subject = f"Settle45 Recovery Digest — {len(reminders)} Alert{'s' if len(reminders) != 1 else ''} for {today.strftime('%d %b')}"
+    try:
+        res = notif_mod.send_resend_email(api_key, to_email, subject, html)
+        return {"ok": True, "sent_to": to_email, "email_id": res.get("id"), "reminders_count": len(reminders)}
+    except Exception as e:
+        raise HTTPException(502, f"Failed to send email: {e}")
+
+
+@router.post("/notifications/test")
+def send_test_notification(request: Request, to_email: str | None = None,
+                           ctx: AuthContext = Depends(supplier)):
+    """Send a quick test notification to confirm Resend delivery."""
+    settings = request.app.state.settings
+    api_key = settings.resend_api_key
+    if not api_key:
+        raise HTTPException(503, "Email delivery is not configured (RESEND_API_KEY missing).")
+    recipient = to_email or settings.notification_email or "acchuachutha004@gmail.com"
+    html = """
+    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+      <h3 style="color: #2563eb; margin: 0 0 10px 0;">Settle45 · Test Notification</h3>
+      <p style="color: #334155; font-size: 14px;">Your Resend email delivery is working correctly!</p>
+      <p style="color: #64748b; font-size: 12px;">You will receive daily reminders for invoices due in 3 days, promises due, and broken buyer promises.</p>
+    </div>
+    """
+    try:
+        res = notif_mod.send_resend_email(api_key, recipient, "Settle45 Test Notification", html)
+        return {"ok": True, "sent_to": recipient, "email_id": res.get("id")}
+    except Exception as e:
+        raise HTTPException(502, f"Failed to send email: {e}")

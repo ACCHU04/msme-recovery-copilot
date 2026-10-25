@@ -2,7 +2,7 @@
 
 // C4: ask the buyer to confirm receipt through a one-time link (no account needed).
 // A "received in good order" answer is written acceptance from the buyer: strong evidence.
-import { Check, Copy, Link2, MessageCircle } from "lucide-react";
+import { Check, Copy, Link2, Mail, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, LoadingState } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
@@ -40,6 +40,8 @@ export function ConfirmationCard({ invoiceId, invoiceNumber, buyerName }: { invo
             <Button onClick={copy}>{copied ? <><Check size={16} aria-hidden /> Copied</> : <><Copy size={16} aria-hidden /> Copy message</>}</Button>
             <a href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-medium hover:bg-slate-50"><MessageCircle size={16} aria-hidden /> Open in WhatsApp</a>
+            <a href={`mailto:?subject=${encodeURIComponent("Delivery & Receipt Confirmation")}&body=${encodeURIComponent(message)}`}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-600 bg-white px-3 py-2 font-medium text-blue-700 hover:bg-blue-50"><Mail size={16} aria-hidden /> Open in email</a>
           </div>
         </div>
       ) : (

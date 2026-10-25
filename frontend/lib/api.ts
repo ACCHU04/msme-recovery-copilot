@@ -1,7 +1,8 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders, EvidenceFile, EvidenceFiles, DraftLang } from "@/types/api";
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders, EvidenceFile, EvidenceFiles, DraftLang,
+  RemindersResponse, DigestResponse } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
 
@@ -284,4 +285,8 @@ export const api = {
 
   createDraft: (caseId: string, kind: DraftKind, lang: DraftLang = "en") =>
     request<Draft>(`/api/cases/${caseId}/drafts`, { method: "POST", body: { kind, lang } }),
+  getReminders: () => request<RemindersResponse>("/api/notifications/reminders"),
+  sendReminderDigest: () => request<DigestResponse>("/api/notifications/send-digest", { method: "POST" }),
+  sendTestNotification: (toEmail?: string) =>
+    request<DigestResponse>("/api/notifications/test", { method: "POST", body: { to_email: toEmail } }),
 };

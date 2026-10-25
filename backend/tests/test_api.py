@@ -1180,3 +1180,42 @@ def test_auth_lookup_cached_and_cleared_on_new_business(secure_client):
     assert secure_client.post("/api/businesses", headers=s, json={
         "name": "New Co", "size": "micro", "activity": "manufacturing"}).status_code == 200
     assert secure_client.get("/api/businesses/me", headers=s).json()["name"] == "New Co"
+
+
+def test_notifications_reminders(client):
+    r = client.get("/api/notifications/reminders?as_of=2026-10-25")
+    assert r.status_code == 200
+    data = r.json()
+    assert "reminders" in data
+    assert isinstance(data["reminders"], list)
+
+
+def test_notifications_send_digest_no_key(client):
+    import dataclasses
+    client.app.state.settings = dataclasses.replace(client.app.state.settings, resend_api_key=None)
+    r = client.post("/api/notifications/send-digest")
+    assert r.status_code == 503
+
+
+def test_notifications_send_digest_mocked(client, monkeypatch):
+    import dataclasses
+    client.app.state.settings = dataclasses.replace(client.app.state.settings, resend_api_key="re_test_dummy_key")
+    import app.notifications as notif
+    monkeypatch.setattr(notif, "send_resend_email", lambda *a, **kw: {"id": "msg_12345"})
+    r = client.post("/api/notifications/send-digest?as_of=2026-10-25")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["email_id"] == "msg_12345"
+
+
+def test_notifications_test_mocked(client, monkeypatch):
+    import dataclasses
+    client.app.state.settings = dataclasses.replace(client.app.state.settings, resend_api_key="re_test_dummy_key")
+    import app.notifications as notif
+    monkeypatch.setattr(notif, "send_resend_email", lambda *a, **kw: {"id": "test_msg_999"})
+    r = client.post("/api/notifications/test")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert data["email_id"] == "test_msg_999"

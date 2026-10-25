@@ -462,3 +462,26 @@ export interface QRResult {
   verdict: "looks_right" | "check_this" | "not_compared";
   can_save_irn: boolean;
 }
+
+
+export interface ReminderItem {
+  kind: "approaching_due" | "newly_overdue" | "promise_due_soon" | "promise_broken";
+  title: string;
+  detail: string;
+  invoice_id?: string;
+  case_id?: string;
+  promise_id?: string;
+  due_date?: ISODate;
+  tone: "amber" | "red" | "blue";
+}
+
+export interface RemindersResponse {
+  reminders: ReminderItem[];
+}
+
+export interface DigestResponse {
+  ok: boolean;
+  sent_to: string;
+  email_id: string;
+  reminders_count?: number;
+}

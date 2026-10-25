@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRightLeft, Check, ChevronDown, ChevronUp, CircleAlert, Copy, Handshake, Info, MessageCircle, Send, ShieldAlert, TriangleAlert } from "lucide-react";
+import { ArrowRightLeft, Check, ChevronDown, ChevronUp, CircleAlert, Copy, Handshake, Info, Mail, MessageCircle, Send, ShieldAlert, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Badge, Button, Card, cx, ErrorState, Field, inputClass, LoadingState, Notice } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
@@ -196,6 +196,10 @@ export function DraftEditor({ caseId, kind, onLogged, onClose }: {
             <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-lg border border-emerald-600 bg-white px-3.5 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
               <MessageCircle size={16} aria-hidden /> Open in WhatsApp
+            </a>
+            <a href={`mailto:?subject=${encodeURIComponent(`Payment Notice under MSMED Act — ${DRAFT_LABEL[kind]}`)}&body=${encodeURIComponent(text)}`}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-600 bg-white px-3.5 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">
+              <Mail size={16} aria-hidden /> Open in email
             </a>
             {step && (
               <>
