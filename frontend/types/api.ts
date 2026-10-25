@@ -205,7 +205,32 @@ export interface Business {
   activity: "manufacturing" | "services" | "trader" | null;
   udyam_registered: boolean | null;
   udyam_reg_date: ISODate | null;
+  description?: string | null;
+  email?: string | null;
+  address?: string | null;
+  website?: string | null;
+  gstin?: string | null;
+  pan?: string | null;
+  established_year?: number | null;
+  products?: string[];
+  team?: TeamMember[];
+  documents?: Partial<Record<BusinessDocKind, "have" | "missing" | "unknown">>;
 }
+
+/** Listed on the profile for reference only; listing someone gives them no access. */
+export interface TeamMember { name: string; role: string; email?: string | null }
+export type BusinessDocKind = "udyam_certificate" | "gst_certificate" | "pan_card" | "address_proof" | "bank_details";
+
+export interface Milestone {
+  id: string;
+  case_id: string;
+  title: string;
+  due_date: ISODate;
+  amount: Money;
+  invoice_id: string | null;
+}
+
+export interface InvoiceNote { id: string; invoice_id: string; body: string; created_at: string }
 
 export type PayStatus = "paid" | "overdue" | "due_soon" | "not_due" | "disputed" | "missing_dates";
 

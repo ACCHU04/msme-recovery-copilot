@@ -45,10 +45,16 @@ export function contractStatus(r: ContractRow): { label: string; tone: "green" |
   return { label: "Active", tone: "blue" };
 }
 
+/** Credit period for the whole order. Only claims "agreed" when every invoice has the same
+ *  written period; otherwise says it varies, so one invoice's terms aren't shown as the PO's. */
 export function paymentTerms(inv: InvoiceRow[]): string {
-  const agreed = inv.filter((i) => i.agreed_due_date && i.delivery_date)
-    .map((i) => Math.round((Date.parse(i.agreed_due_date!) - Date.parse(i.delivery_date!)) / 864e5));
-  if (agreed.length === 0) return "None agreed in writing (15 days from acceptance)";
-  const max = Math.max(...agreed);
-  return `${max} days agreed in writing${max > 45 ? " (capped at 45 by law)" : ""}`;
+  const none = "None agreed in writing (15 days from acceptance)";
+  if (inv.length === 0) return none;
+  const days = inv.map((i) => (i.agreed_due_date && i.delivery_date
+    ? Math.round((Date.parse(i.agreed_due_date) - Date.parse(i.delivery_date)) / 864e5) : null));
+  if (days.every((d) => d === null)) return none;
+  const set = new Set(days);
+  if (set.size > 1) return "Varies by invoice (see linked invoices)";
+  const d = days[0]!;
+  return `${d} days after delivery, agreed in writing${d > 45 ? " (capped at 45 by law)" : ""}`;
 }

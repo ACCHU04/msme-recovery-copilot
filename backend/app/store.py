@@ -35,6 +35,15 @@ DEMO_ROWS: dict[str, list[Row]] = {
         "phone": "+910000000001", "name": "Sri Lakshmi Packaging",
         "udyam_no": "UDYAM-KR-00-0000000", "size": "micro", "activity": "manufacturing",
         "udyam_registered": True, "udyam_reg_date": "2023-05-12", "preferred_lang": "en",
+        # Fictional demo details (PAN/GSTIN are format-valid samples, not real registrations)
+        "description": "Corrugated boxes and printed cartons for food and FMCG brands.",
+        "email": "accounts@srilakshmi.example", "address": "Plot 14, Peenya Industrial Area, Bengaluru 560058",
+        "website": None, "gstin": "29ABCDE1234F1ZW", "pan": "ABCDE1234F", "established_year": 2016,
+        "products": ["Corrugated boxes", "Printed cartons", "Food-grade liners"],
+        "team": [{"name": "Rajesh Sharma", "role": "Owner", "email": "rajesh@srilakshmi.example"},
+                 {"name": "Priya Nair", "role": "Accounts", "email": "priya@srilakshmi.example"}],
+        "documents": {"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have",
+                      "address_proof": "missing", "bank_details": "unknown"},
     }],
     "buyers": [{
         "id": "22222222-2222-2222-2222-222222222222",
@@ -75,6 +84,16 @@ DEMO_ROWS: dict[str, list[Row]] = {
     ],
     "calculations": [], "drafts": [], "conversations": [], "inbound_messages": [],
     "promises": [], "followups": [],
+    # Planned deliveries of the demo PO: together they make up the ₹2,75,000 order.
+    "milestones": [
+        {"id": "55555555-5555-5555-5555-555555555551", "case_id": "33333333-3333-3333-3333-333333333333",
+         "title": "First delivery: 3,000 cartons", "due_date": "2026-03-10", "amount": "180000.00",
+         "invoice_id": "44444444-4444-4444-4444-444444444441", "created_at": "2026-02-20T10:00:00+00:00"},
+        {"id": "55555555-5555-5555-5555-555555555552", "case_id": "33333333-3333-3333-3333-333333333333",
+         "title": "Second delivery: 1,500 cartons", "due_date": "2026-05-04", "amount": "95000.00",
+         "invoice_id": "44444444-4444-4444-4444-444444444442", "created_at": "2026-02-20T10:00:00+00:00"},
+    ],
+    "invoice_notes": [],
     "profiles": [],   # only used with AUTH_MODE=supabase (rows come from Supabase Auth sign-up)
 }
 
@@ -94,7 +113,8 @@ class MemoryStore:
 
     def insert(self, table: str, row: Row) -> Row:
         row = {"id": str(uuid.uuid4()), **row}
-        if table in ("calculations", "drafts", "cases", "businesses", "promises", "followups"):
+        if table in ("calculations", "drafts", "cases", "businesses", "promises", "followups",
+                     "milestones", "invoice_notes"):
             row.setdefault("created_at", datetime.now(timezone.utc).isoformat())
         self.tables[table].append(copy.deepcopy(row))
         return row

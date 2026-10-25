@@ -8,6 +8,8 @@ every row.
 """
 from __future__ import annotations
 
+from .due_date import human
+
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -50,8 +52,8 @@ def bank_rate_on(day: date, table: list[BankRate] | None = None) -> BankRate:
     applicable = [r for r in rows if r.effective_from <= day]
     if not applicable:
         raise RateUnavailable(
-            f"No verified RBI Bank Rate on file for {day.isoformat()}. "
-            f"Earliest verified rate starts {rows[0].effective_from.isoformat()}."
+            f"No verified RBI Bank Rate on file for {human(day)}. "
+            f"Earliest verified rate starts {human(rows[0].effective_from)}."
         )
     return applicable[-1]
 

@@ -22,13 +22,14 @@ owner confirming every value.
 | Simulator endpoint | Stub with final shape; chat state machine is next (P3) |
 | Auth: Supabase JWT verification, ownership from the token | Done, tested |
 | Sign-in in the frontend: register (supplier / buyer / adviser), email verification, sign in, remember me, forgot / reset password, sign out | Done; tested end to end against a stand-in auth server (`e2e/`), **not yet against a real Supabase project** |
-| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (27 tests), backend (158 tests) |
+| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (30 tests), backend (182 tests) |
 | Payment checks: running total vs amount owed, duplicate guard | Done, tested |
 | Copilot: reconciliation findings, ODR readiness, promise tracker, next-action engine | Done, tested |
 | Drafts: template-based, figures from the calculation (`POST /cases/{id}/drafts`) | Done, tested |
 | Frontend (Next.js): login, dashboard, business profile, contracts and contract details, invoices and invoice details, recovery cases, assistant, legal assistant, buyer profile and payment performance, reports, settings | Done, tested (see `frontend/README.md`) |
 | Marketplace (labelled sample data) and adviser portal (role preview of your own cases) | Preview only, no external service |
 | Invoice list/detail, invoice edit and delete, payment delete, what-if calculator, rate table | Done, tested |
+| Business profile details (contact, GSTIN/PAN, products, team list, document checklist), contract milestones, invoice notes (migration 004) | Done, tested |
 | Restyled UI: demo login, dashboard, business profile, invoices, invoice verification, legal assistant, buyer insights, recovery journey, Open in WhatsApp | Done, tested |
 | Case sharing with advisers, buyer invoice linking, server PDF, Kannada drafts, document upload, WhatsApp Business API | To do |
 
@@ -42,7 +43,7 @@ See `frontend/README.md` (`npm install && npm run dev`, with the backend running
 cd backend
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m pytest -q                                   # 158 tests
+python -m pytest -q                                   # 182 tests
 uvicorn app.main:app --reload                         # http://127.0.0.1:8000/docs
 ```
 
@@ -58,8 +59,8 @@ per Supabase project; about 20 minutes.
 database password somewhere safe.
 
 **2. Create the tables and rules.** Dashboard → SQL Editor → run, in this order:
-`supabase/migrations/001_init.sql`, `002_copilot.sql`, `003_auth_roles.sql`, then
-`supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
+`supabase/migrations/001_init.sql`, `002_copilot.sql`, `003_auth_roles.sql`,
+`004_profile_notes_milestones.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
 sign-up trigger, column grants and row level security (explained below).
 
 **3. Auth settings.** Dashboard → Authentication:
@@ -112,7 +113,7 @@ approves; typing another role's URL shows Access denied.
 | Frontend server (`middleware.ts`) | Every page: signed in? email verified? approved? right role? Otherwise redirects (login, verify email, pending approval, access denied). |
 | Browser | Only hides links. Never trusted. |
 
-Tests: `supabase/tests/test_rls.py` (27 checks on real Postgres, including attempts to
+Tests: `supabase/tests/test_rls.py` (30 checks on real Postgres, including attempts to
 self-promote, edit other users, register as admin and write the review log directly),
 `backend/tests/test_api.py` (role checks on every data endpoint) and `e2e/` (59 browser
 checks). Run the RLS tests with any Postgres 15+:

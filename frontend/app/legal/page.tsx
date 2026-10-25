@@ -222,7 +222,8 @@ function NextTab({ ev, caseId }: { ev: Evaluation | null; caseId?: string }) {
 function Legal() {
   const params = useSearchParams();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>(params.get("invoice") ? "calculator" : "guidance");
+  const asked = TABS.find((t) => t.id === params.get("tab"))?.id;
+  const [tab, setTab] = useState<Tab>(asked ?? (params.get("invoice") ? "calculator" : "guidance"));
   const invoices = useAsync(() => api.listInvoices(), []);
   const selectedId = params.get("invoice") ?? invoices.data?.[0]?.id ?? null;
   const ctx = useAsync(async () => {

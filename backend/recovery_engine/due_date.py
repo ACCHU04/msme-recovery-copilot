@@ -16,6 +16,11 @@ from datetime import date, timedelta
 from enum import Enum
 
 
+def human(d: date) -> str:
+    """Dates in sentences shown to users: 26 Mar 2026, not 2026-03-26."""
+    return f"{d.day} {d.strftime('%b %Y')}"
+
+
 class AcceptanceStatus(str, Enum):
     DEEMED = "deemed"              # no written objection within 15 days of delivery
     OBJECTION_REMOVED = "objection_removed"
@@ -83,14 +88,14 @@ def compute_due_date(
             warnings.append("Agreed due date is before the acceptance date; check the dates.")
         if agreed_due_date > statutory_cap:
             last_day = statutory_cap
-            basis = (f"Agreed date {agreed_due_date.isoformat()} is more than 45 days after "
-                     f"acceptance, so it is capped at {statutory_cap.isoformat()} (s.15 proviso).")
+            basis = (f"Agreed date {human(agreed_due_date)} is more than 45 days after "
+                     f"acceptance, so it is capped at {human(statutory_cap)} (s.15 proviso).")
             rules.append("MSMED-15-45day-cap")
             warnings.append("ASSUMPTION A2: interest runs from the day after the 45-day cap "
                             "where the agreed period exceeded 45 days.")
         else:
             last_day = agreed_due_date
-            basis = f"Agreed in writing to pay by {agreed_due_date.isoformat()} (s.15)."
+            basis = f"Agreed in writing to pay by {human(agreed_due_date)} (s.15)."
             rules.append("MSMED-15-agreed-date")
         interest_start = last_day + timedelta(days=1)
         rules.append("MSMED-16-from-day-after-agreed")
@@ -99,7 +104,7 @@ def compute_due_date(
         last_day = appointed_day - timedelta(days=1)
         interest_start = appointed_day
         basis = ("No credit period agreed in writing, so payment was due before the "
-                 f"appointed day {appointed_day.isoformat()} (s.2(b) and s.15).")
+                 f"appointed day {human(appointed_day)} (s.2(b) and s.15).")
         rules += ["MSMED-2b-appointed-day", "MSMED-16-from-appointed-day"]
 
     return DueDateResult(status, acceptance, last_day, interest_start, basis, rules, warnings)

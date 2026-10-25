@@ -33,7 +33,8 @@ def url():
     test_url = ADMIN_URL.rsplit("/", 1)[0] + "/" + DB
     with psycopg.connect(test_url, autocommit=True) as c:
         for f in ["tests/supabase_stub.sql", "migrations/001_init.sql",
-                  "migrations/002_copilot.sql", "migrations/003_auth_roles.sql"]:
+                  "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
+                  "migrations/004_profile_notes_milestones.sql", "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -232,3 +233,47 @@ def test_users_cannot_see_other_businesses(url):
         c.commit()
     with as_user(url, b) as c:
         assert c.execute("select count(*) from businesses where owner_id = %s", (a,)).fetchone()[0] == 0
+
+
+# ------------------------------------------------------------------ 004: milestones and notes
+
+def _supplier_with_case(url):
+    """A supplier who owns a business with one case and one invoice."""
+    uid = signup(url, "supplier")
+    with as_user(url, uid) as c:
+        b = c.execute("insert into businesses (owner_id, name) values (%s, 'Mine') returning id", (uid,)).fetchone()[0]
+        buyer = c.execute("insert into buyers (business_id, name) values (%s, 'B') returning id", (b,)).fetchone()[0]
+        case = c.execute("insert into cases (business_id, buyer_id) values (%s, %s) returning id", (b, buyer)).fetchone()[0]
+        inv = c.execute("insert into invoices (case_id, number, invoice_date, amount) values (%s, 'I-1', '2026-09-01', 100) "
+                        "returning id", (case,)).fetchone()[0]
+        c.commit()
+    return uid, case, inv
+
+
+def test_owner_manages_milestones_and_notes(url):
+    uid, case, inv = _supplier_with_case(url)
+    with as_user(url, uid) as c:
+        c.execute("insert into milestones (case_id, title, due_date, amount, invoice_id) values (%s, 'M1', '2026-11-01', 50, %s)", (case, inv))
+        c.execute("insert into invoice_notes (invoice_id, body) values (%s, 'Called')", (inv,))
+        c.commit()
+        assert c.execute("select count(*) from milestones").fetchone()[0] == 1
+        assert c.execute("select count(*) from invoice_notes").fetchone()[0] == 1
+
+
+def test_others_cannot_see_or_add_milestones_and_notes(url):
+    uid, case, inv = _supplier_with_case(url)
+    other = signup(url, "supplier")
+    with as_user(url, uid) as c:
+        c.execute("insert into invoice_notes (invoice_id, body) values (%s, 'Private')", (inv,))
+        c.commit()
+    with as_user(url, other) as c:
+        assert c.execute("select count(*) from invoice_notes where invoice_id = %s", (inv,)).fetchone()[0] == 0
+        with pytest.raises(errors.InsufficientPrivilege):
+            c.execute("insert into milestones (case_id, title, due_date, amount) values (%s, 'X', '2026-11-01', 1)", (case,))
+
+
+def test_seeded_demo_milestones_match_the_po(url):
+    with psycopg.connect(url) as c:
+        total, po = c.execute("select sum(m.amount), max(cs.po_amount) from milestones m join cases cs on cs.id = m.case_id "
+                              "where m.case_id = '33333333-3333-3333-3333-333333333333'").fetchone()
+    assert total == po == 275000

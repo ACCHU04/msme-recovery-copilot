@@ -1,6 +1,6 @@
 import type {
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceRow, PromiseCandidate, RateRow, SettlementOption,
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, Milestone, PromiseCandidate, RateRow, SettlementOption,
 } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
@@ -135,6 +135,17 @@ export const api = {
     request(`/api/invoices/${id}`, { method: "PATCH", body }),
   deleteInvoice: (id: string) => request(`/api/invoices/${id}`, { method: "DELETE" }),
   deletePayment: (id: string) => request(`/api/payments/${id}`, { method: "DELETE" }),
+
+  listMilestones: (caseId: string) => request<Milestone[]>(`/api/cases/${caseId}/milestones`),
+  addMilestone: (caseId: string, body: { title: string; due_date: string; amount: string; invoice_id?: string | null }) =>
+    request<Milestone>(`/api/cases/${caseId}/milestones`, { method: "POST", body }),
+  patchMilestone: (id: string, body: Partial<Pick<Milestone, "title" | "due_date" | "amount" | "invoice_id">>) =>
+    request<Milestone>(`/api/milestones/${id}`, { method: "PATCH", body }),
+  deleteMilestone: (id: string) => request(`/api/milestones/${id}`, { method: "DELETE" }),
+
+  listNotes: (invoiceId: string) => request<InvoiceNote[]>(`/api/invoices/${invoiceId}/notes`),
+  addNote: (invoiceId: string, body: string) => request<InvoiceNote>(`/api/invoices/${invoiceId}/notes`, { method: "POST", body: { body } }),
+  deleteNote: (id: string) => request(`/api/notes/${id}`, { method: "DELETE" }),
   calculate: (body: Record<string, unknown>) =>
     request<CalcResult>("/api/calculate", { method: "POST", body }),
   rates: () => request<RateRow[]>("/api/rates"),

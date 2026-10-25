@@ -468,6 +468,10 @@ export function SettlementCard({ caseId, calcId }: { caseId: string; calcId: str
           </tbody>
         </table></div>
       )}
+      <p className="mt-3 text-xs text-slate-600">
+        &ldquo;Principal&rdquo; here can be higher than the unpaid invoice amount: with interest-first allocation, part of each
+        payment the buyer made went to interest that was already due, so less of the principal was cleared.
+      </p>
     </Card>
   );
 }

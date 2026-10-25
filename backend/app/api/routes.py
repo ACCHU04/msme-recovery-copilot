@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from recovery_engine.due_date import human
 from ..auth import AuthContext, approved_user, current_business_id, supplier
 from ..evaluate import ENGINE_VERSION, evaluate_case, invoice_outstanding, settlement_from_totals
 from copilot import parse_promise
@@ -18,8 +19,8 @@ from ..invoices import list_invoices, rate_table, what_if
 from ..evaluate import _jsonable
 from ..schemas import (EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
-                       CalculateIn, DraftIn, InvoicePatch, PromiseExtractIn, PromiseIn,
-                       SimMessageIn)
+                       CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
+                       PromiseExtractIn, PromiseIn, SimMessageIn)
 from ..sim import handle_sim_message
 from ..store import Store
 
@@ -37,10 +38,11 @@ def _own_case(store: Store, case_id: str, business_id: str) -> dict:
     return case
 
 
-def _jsonify(model) -> dict:
-    """Pydantic model -> dict with dates as ISO strings and money as strings."""
+def _jsonify(model, partial: bool = False) -> dict:
+    """Pydantic model -> dict with dates as ISO strings and money as strings.
+    partial=True keeps only the fields the client actually sent (for updates)."""
     out = {}
-    for k, v in model.model_dump().items():
+    for k, v in model.model_dump(exclude_unset=partial).items():
         if isinstance(v, date):
             v = v.isoformat()
         elif isinstance(v, Decimal):
@@ -67,9 +69,10 @@ def get_business(store: Store = Depends(get_store), bid: str = Depends(current_b
 @router.post("/businesses")
 def upsert_business(body: BusinessIn, store: Store = Depends(get_store),
                     ctx: AuthContext = Depends(supplier)):
-    data = _jsonify(body)
     if ctx.business_id and store.get("businesses", ctx.business_id):
-        return store.update("businesses", ctx.business_id, data)
+        # Update only what was sent, so saving one section never wipes another.
+        return store.update("businesses", ctx.business_id, _jsonify(body, partial=True))
+    data = _jsonify(body)
     row = {**data, "owner_id": ctx.user_id}
     if ctx.business_id:                   # demo mode: keep the requested id
         row["id"] = ctx.business_id
@@ -168,7 +171,7 @@ def add_payment(invoice_id: str, body: PaymentIn, confirm_duplicate: bool = Fals
     owed = invoice_outstanding(store, inv, body.paid_on)
     if body.amount > owed:
         raise HTTPException(422, f"Payment is more than the Rs {owed} owed on this invoice "
-                                 f"on {body.paid_on.isoformat()}.")
+                                 f"on {human(body.paid_on)}.")
     return store.insert("payments", {"invoice_id": invoice_id, **_jsonify(body)})
 
 
@@ -232,6 +235,10 @@ def delete_invoice(invoice_id: str, store: Store = Depends(get_store),
     _own_invoice(store, invoice_id, bid)
     for p in store.select("payments", invoice_id=invoice_id):
         store.delete("payments", p["id"])
+    for n in store.select("invoice_notes", invoice_id=invoice_id):
+        store.delete("invoice_notes", n["id"])
+    for m in store.select("milestones", invoice_id=invoice_id):
+        store.update("milestones", m["id"], {"invoice_id": None})
     store.delete("invoices", invoice_id)
     return {"deleted": invoice_id}
 
@@ -383,6 +390,83 @@ def create_draft(case_id: str, body: DraftIn, store: Store = Depends(get_store),
                                   "kind": draft["kind"], "lang": draft["lang"],
                                   "body": draft["body"]})
     return {**draft, "id": row["id"], "calculation_id": calc["id"]}
+
+
+# ---------------------------------------------------------------- milestones
+def _milestone_invoice_ok(store: Store, invoice_id: str | None, case_id: str) -> None:
+    if invoice_id is None:
+        return
+    inv = store.get("invoices", invoice_id)
+    if inv is None or inv["case_id"] != case_id:
+        raise HTTPException(422, "That invoice isn't part of this contract.")
+
+
+def _own_milestone(store: Store, milestone_id: str, bid: str) -> dict:
+    m = store.get("milestones", milestone_id)
+    if m is None:
+        raise HTTPException(404, "milestone not found")
+    _own_case(store, m["case_id"], bid)
+    return m
+
+
+@router.get("/cases/{case_id}/milestones")
+def list_milestones(case_id: str, store: Store = Depends(get_store),
+                    bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    return sorted(store.select("milestones", case_id=case_id), key=lambda m: (m["due_date"], m["title"]))
+
+
+@router.post("/cases/{case_id}/milestones", status_code=201)
+def add_milestone(case_id: str, body: MilestoneIn, store: Store = Depends(get_store),
+                  bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    _milestone_invoice_ok(store, body.invoice_id, case_id)
+    return store.insert("milestones", {"case_id": case_id, **_jsonify(body)})
+
+
+@router.patch("/milestones/{milestone_id}")
+def patch_milestone(milestone_id: str, body: MilestonePatch, store: Store = Depends(get_store),
+                    bid: str = Depends(current_business_id)):
+    m = _own_milestone(store, milestone_id, bid)
+    data = _jsonify(body, partial=True)
+    if "invoice_id" in data:
+        _milestone_invoice_ok(store, data["invoice_id"], m["case_id"])
+    return store.update("milestones", milestone_id, data)
+
+
+@router.delete("/milestones/{milestone_id}")
+def delete_milestone(milestone_id: str, store: Store = Depends(get_store),
+                     bid: str = Depends(current_business_id)):
+    _own_milestone(store, milestone_id, bid)
+    store.delete("milestones", milestone_id)
+    return {"deleted": milestone_id}
+
+
+# ---------------------------------------------------------------- invoice notes
+@router.get("/invoices/{invoice_id}/notes")
+def list_notes(invoice_id: str, store: Store = Depends(get_store),
+               bid: str = Depends(current_business_id)):
+    _own_invoice(store, invoice_id, bid)
+    return sorted(store.select("invoice_notes", invoice_id=invoice_id),
+                  key=lambda n: n.get("created_at") or "", reverse=True)
+
+
+@router.post("/invoices/{invoice_id}/notes", status_code=201)
+def add_note(invoice_id: str, body: NoteIn, store: Store = Depends(get_store),
+             bid: str = Depends(current_business_id)):
+    _own_invoice(store, invoice_id, bid)
+    return store.insert("invoice_notes", {"invoice_id": invoice_id, "body": body.body})
+
+
+@router.delete("/notes/{note_id}")
+def delete_note(note_id: str, store: Store = Depends(get_store),
+                bid: str = Depends(current_business_id)):
+    n = store.get("invoice_notes", note_id)
+    if n is None:
+        raise HTTPException(404, "note not found")
+    _own_invoice(store, n["invoice_id"], bid)
+    store.delete("invoice_notes", note_id)
+    return {"deleted": note_id}
 
 
 # ---------------------------------------------------------------- simulator

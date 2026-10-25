@@ -127,36 +127,6 @@ function Insights() {
             )}
           </Card>
 
-          <Card title="Invoices with this buyer">
-            <div className="relative overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <caption className="sr-only">Invoice history with {buyer?.name}</caption>
-                <thead className="bg-slate-50 text-xs text-slate-600"><tr>
-                  <th scope="col" className="py-2.5 pl-3 text-left font-semibold">Invoice</th>
-                  <th scope="col" className="py-2.5 text-left font-semibold">Invoice date</th>
-                  <th scope="col" className="py-2.5 text-left font-semibold">Due by</th>
-                  <th scope="col" className="py-2.5 text-right font-semibold">Amount</th>
-                  <th scope="col" className="py-2.5 pl-4 text-left font-semibold">Paid in full on</th>
-                  <th scope="col" className="py-2.5 text-right font-semibold">Delay (days)</th>
-                  <th scope="col" className="py-2.5 pl-4 text-left font-semibold">Status</th>
-                </tr></thead>
-                <tbody>{rows.map((r) => {
-                  const s = settledOn(r);
-                  const delay = s && r.last_day_to_pay ? days(s, r.last_day_to_pay) : r.days_overdue || null;
-                  return (
-                    <tr key={r.id} className="border-b border-slate-100 last:border-0">
-                      <td className="py-3 pl-3"><Link href={`/invoices/${r.id}`} className="font-medium text-brand-600 hover:underline">{r.number}</Link></td>
-                      <td className="py-3">{formatDate(r.invoice_date)}</td>
-                      <td className="py-3">{formatDate(r.last_day_to_pay)}</td>
-                      <td className="py-3 text-right tabular-nums">{formatINR(r.amount)}</td>
-                      <td className="py-3 pl-4">{s ? formatDate(s) : "—"}</td>
-                      <td className={`py-3 text-right tabular-nums ${delay && delay > 0 ? "font-medium text-red-600" : ""}`}>{delay === null ? "—" : delay}{!s && delay ? " so far" : ""}</td>
-                      <td className="py-3 pl-4"><PayStatusBadge status={r.status} partial={r.partially_paid} /></td>
-                    </tr>);
-                })}</tbody>
-              </table>
-            </div>
-          </Card>
         </div>
 
         <div className="space-y-6">
@@ -169,6 +139,8 @@ function Insights() {
             </ul>
             <p className="mt-3 flex gap-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-600"><Info size={14} className="mt-0.5 shrink-0" aria-hidden />
               Based only on invoices and payments you entered. It is not a credit rating and is not shared with anyone. {rows.length < 5 && "With fewer than 5 invoices, these figures say little."}</p>
+            <p className="mt-3 text-sm text-slate-700">Something wrong? These figures come from your entries, so correct the invoice or payment itself:
+              {rows[0] && <> <Link href={`/invoices/${rows[0].id}`} className="font-medium text-brand-600 underline">correct a record</Link>.</>}</p>
           </Card>
           <Card title="Open cases with this buyer">
             <ul className="space-y-3">{details.map(({ c, ev }) => (
@@ -188,6 +160,36 @@ function Insights() {
           </Card>
         </div>
       </div>
+      <Card title="Invoices with this buyer">
+        <div className="relative overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <caption className="sr-only">Invoice history with {buyer?.name}</caption>
+            <thead className="bg-slate-50 text-xs text-slate-600"><tr>
+              <th scope="col" className="py-2.5 pl-3 text-left font-semibold">Invoice</th>
+              <th scope="col" className="py-2.5 text-left font-semibold">Invoice date</th>
+              <th scope="col" className="py-2.5 text-left font-semibold">Due by</th>
+              <th scope="col" className="py-2.5 text-right font-semibold">Amount</th>
+              <th scope="col" className="py-2.5 pl-4 text-left font-semibold">Paid in full on</th>
+              <th scope="col" className="py-2.5 text-right font-semibold">Delay (days)</th>
+              <th scope="col" className="py-2.5 pl-4 text-left font-semibold">Status</th>
+            </tr></thead>
+            <tbody>{rows.map((r) => {
+              const s = settledOn(r);
+              const delay = s && r.last_day_to_pay ? days(s, r.last_day_to_pay) : r.days_overdue || null;
+              return (
+                <tr key={r.id} className="border-b border-slate-100 last:border-0">
+                  <td className="py-3 pl-3"><Link href={`/invoices/${r.id}`} className="font-medium text-brand-600 hover:underline">{r.number}</Link></td>
+                  <td className="py-3">{formatDate(r.invoice_date)}</td>
+                  <td className="py-3">{formatDate(r.last_day_to_pay)}</td>
+                  <td className="py-3 text-right tabular-nums">{formatINR(r.amount)}</td>
+                  <td className="py-3 pl-4">{s ? formatDate(s) : "—"}</td>
+                  <td className={`py-3 text-right tabular-nums ${delay && delay > 0 ? "font-medium text-red-600" : ""}`}>{delay === null ? "—" : delay}{!s && delay ? " so far" : ""}</td>
+                  <td className="py-3 pl-4"><PayStatusBadge status={r.status} partial={r.partially_paid} /></td>
+                </tr>);
+            })}</tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }

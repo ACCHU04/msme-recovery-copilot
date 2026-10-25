@@ -1,4 +1,4 @@
--- Run after migrations 001 and 002.
+-- Run after migrations 001 to 004.
 -- Demo data (all names fictional). Expected result as of 2026-10-25, interest-first:
 --   INV-114 total 144734.20, INV-131 total 101338.41, case total 246072.61
 -- Fixed UUIDs so the frontend and tests can link to them.
@@ -33,3 +33,23 @@ insert into evidence_items (case_id, kind, status) values
   ('33333333-3333-3333-3333-333333333333', 'ledger', 'have'),
   ('33333333-3333-3333-3333-333333333333', 'communications', 'unknown'),
   ('33333333-3333-3333-3333-333333333333', 'udyam_cert', 'have');
+
+-- Profile details and milestones (migration 004). Fictional values; PAN and GSTIN are
+-- format-valid samples, not real registrations.
+update businesses set
+  description = 'Corrugated boxes and printed cartons for food and FMCG brands.',
+  email = 'accounts@srilakshmi.example',
+  address = 'Plot 14, Peenya Industrial Area, Bengaluru 560058',
+  gstin = '29ABCDE1234F1ZW', pan = 'ABCDE1234F', established_year = 2016,
+  products = '["Corrugated boxes", "Printed cartons", "Food-grade liners"]',
+  team = '[{"name": "Rajesh Sharma", "role": "Owner", "email": "rajesh@srilakshmi.example"},
+           {"name": "Priya Nair", "role": "Accounts", "email": "priya@srilakshmi.example"}]',
+  documents = '{"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have",
+                "address_proof": "missing", "bank_details": "unknown"}'
+where id = '11111111-1111-1111-1111-111111111111';
+
+insert into milestones (id, case_id, title, due_date, amount, invoice_id) values
+  ('55555555-5555-5555-5555-555555555551', '33333333-3333-3333-3333-333333333333',
+   'First delivery: 3,000 cartons', '2026-03-10', 180000.00, '44444444-4444-4444-4444-444444444441'),
+  ('55555555-5555-5555-5555-555555555552', '33333333-3333-3333-3333-333333333333',
+   'Second delivery: 1,500 cartons', '2026-05-04', 95000.00, '44444444-4444-4444-4444-444444444442');

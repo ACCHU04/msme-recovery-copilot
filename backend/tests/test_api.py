@@ -1,6 +1,7 @@
 """API tests against the in-memory store. The demo-case totals must match the
 engine figures in the build plan (as of 2026-10-25, interest-first)."""
 import pytest
+from decimal import Decimal
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
@@ -410,6 +411,9 @@ def test_extract_reports_missing_fields(client):
 
 # ---------------------------------------------------------------- authz on every endpoint
 FU_ID = "77777777-7777-7777-7777-777777777777"
+MS1 = "55555555-5555-5555-5555-555555555551"
+MS2 = "55555555-5555-5555-5555-555555555552"
+NOTE_ID = "66666666-6666-6666-6666-666666666666"
 ENDPOINTS = [
     ("get", "/api/businesses/me", None),
     ("get", "/api/cases", None),
@@ -435,6 +439,13 @@ ENDPOINTS = [
     ("post", "/api/calculate", {"amount": "1000", "delivery_date": "2026-01-01"}),
     ("get", "/api/rates", None),
     ("post", "/api/sim/message", {"session": "s", "text": "hi"}),
+    ("get", f"/api/cases/{CASE}/milestones", None),
+    ("post", f"/api/cases/{CASE}/milestones", {"title": "M3", "due_date": "2026-11-01", "amount": "10"}),
+    ("patch", f"/api/milestones/{MS1}", {"title": "Renamed"}),
+    ("get", f"/api/invoices/{INV114}/notes", None),
+    ("post", f"/api/invoices/{INV114}/notes", {"body": "Called accounts"}),
+    ("delete", f"/api/notes/{NOTE_ID}", None),
+    ("delete", f"/api/milestones/{MS2}", None),
 ]
 
 
@@ -443,6 +454,8 @@ def secure_with_followup(secure_client):
     secure_client.app.state.store.tables["followups"].append(
         {"id": FU_ID, "case_id": CASE, "step": 1, "sent_on": "2026-10-01",
          "reply_received": False})
+    secure_client.app.state.store.tables["invoice_notes"].append(
+        {"id": NOTE_ID, "invoice_id": INV114, "body": "x", "created_at": "2026-10-01T00:00:00+00:00"})
     return secure_client
 
 
@@ -454,7 +467,7 @@ def test_every_endpoint_requires_login(secure_with_followup, method, path, body)
 
 @pytest.mark.parametrize("method,path,body",
                          [e for e in ENDPOINTS if "/cases/" in e[1] or "/invoices/" in e[1]
-                          or "/followups/" in e[1]])
+                          or "/followups/" in e[1] or "/milestones/" in e[1] or "/notes/" in e[1]])
 def test_other_user_cannot_touch_this_case(secure_with_followup, method, path, body):
     h = bearer(token(STRANGER))
     secure_with_followup.post("/api/businesses", json={"name": "Other Co"}, headers=h)
@@ -619,3 +632,59 @@ def test_new_case_has_defaults(client):
     c = client.post("/api/cases", json={"buyer": {"name": "B"}}).json()
     assert c["dispute_reason"] == "none" and c["po_amount"] is None
     assert client.get(f"/api/cases/{c['id']}").json()["dispute_reason"] == "none"
+
+
+# ---------------------------------------------------------------- profile, milestones, notes
+def test_profile_details_save_without_wiping_other_fields(client):
+    r = client.post("/api/businesses", json={"name": "Sri Lakshmi Packaging", "products": ["Boxes", " Boxes ", "Liners"],
+                                             "team": [{"name": "Asha", "role": "Accounts", "email": "ASHA@x.in"}]})
+    assert r.status_code == 200
+    b = r.json()
+    assert b["products"] == ["Boxes", "Liners"] and b["team"][0]["email"] == "asha@x.in"
+    assert b["phone"] == "+910000000001" and b["udyam_no"] == "UDYAM-KR-00-0000000"   # untouched
+    assert b["gstin"] == "29ABCDE1234F1ZW"
+
+
+@pytest.mark.parametrize("body,field", [
+    ({"gstin": "29ABCDE1234F1ZX"}, "gstin"), ({"pan": "ABCD1234F"}, "pan"),
+    ({"email": "not-an-email"}, "email"), ({"documents": {"passport": "have"}}, "documents"),
+    ({"products": ["x" * 61]}, "products"), ({"team": [{"name": "A", "role": "B", "email": "bad"}]}, "team"),
+])
+def test_profile_detail_validation(client, body, field):
+    r = client.post("/api/businesses", json={"name": "Sri Lakshmi Packaging", **body})
+    assert r.status_code == 422 and field in r.text
+
+
+def test_demo_milestones_add_up_to_the_po(client):
+    ms = client.get(f"/api/cases/{CASE}/milestones").json()
+    assert [m["title"][:6] for m in ms] == ["First ", "Second"]
+    assert sum(Decimal(m["amount"]) for m in ms) == Decimal("275000")
+
+
+def test_milestone_crud_and_invoice_must_belong_to_contract(client):
+    other = client.post("/api/cases", json={"buyer": {"name": "Other buyer"}}).json()
+    inv = client.post(f"/api/cases/{other['id']}/invoices",
+                      json={"number": "O-1", "invoice_date": "2026-09-01", "amount": "500"}).json()
+    r = client.post(f"/api/cases/{CASE}/milestones",
+                    json={"title": "Bad link", "due_date": "2026-11-01", "amount": "10", "invoice_id": inv["id"]})
+    assert r.status_code == 422
+    m = client.post(f"/api/cases/{CASE}/milestones", json={"title": "Third delivery", "due_date": "2026-11-15",
+                                                           "amount": "25000"}).json()
+    assert client.patch(f"/api/milestones/{m['id']}", json={"invoice_id": INV114}).json()["invoice_id"] == INV114
+    assert client.patch(f"/api/milestones/{m['id']}", json={"invoice_id": inv["id"]}).status_code == 422
+    assert client.delete(f"/api/milestones/{m['id']}").status_code == 200
+    assert client.post(f"/api/cases/{CASE}/milestones", json={"title": "x", "due_date": "2026-11-01",
+                                                              "amount": "0"}).status_code == 422
+
+
+def test_notes_newest_first_and_cleaned_up_with_invoice(client):
+    a = client.post(f"/api/invoices/{INV114}/notes", json={"body": "Called accounts team"}).json()
+    b = client.post(f"/api/invoices/{INV114}/notes", json={"body": "  Promised to check  "}).json()
+    assert b["body"] == "Promised to check"
+    assert [n["id"] for n in client.get(f"/api/invoices/{INV114}/notes").json()] == [b["id"], a["id"]]
+    assert client.post(f"/api/invoices/{INV114}/notes", json={"body": "   "}).status_code == 422
+    assert client.delete(f"/api/notes/{a['id']}").status_code == 200
+    client.delete(f"/api/invoices/{INV114}")
+    store = client.app.state.store
+    assert store.select("invoice_notes", invoice_id=INV114) == []
+    assert store.get("milestones", MS1)["invoice_id"] is None   # milestone kept, link removed

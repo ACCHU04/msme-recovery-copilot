@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 UDYAM_RE = re.compile(r"^UDYAM-[A-Z]{2}-\d{2}-\d{7}$")
+PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]{2,}$")
+BUSINESS_DOC_KINDS = ("udyam_certificate", "gst_certificate", "pan_card", "address_proof", "bank_details")
 GSTIN_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
@@ -29,6 +32,20 @@ def _not_future(v: date | None, field: str) -> date | None:
     return v
 
 
+class TeamMemberIn(BaseModel):
+    """A person listed on the profile for reference. Listing someone gives them no access."""
+    name: str = Field(min_length=1, max_length=100)
+    role: str = Field(min_length=1, max_length=50)
+    email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def email_ok(cls, v: str | None) -> str | None:
+        if v and not EMAIL_RE.match(v.strip()):
+            raise ValueError("Enter a valid email address")
+        return v.strip().lower() if v else None
+
+
 class BusinessIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     phone: str | None = None
@@ -38,6 +55,60 @@ class BusinessIn(BaseModel):
     udyam_registered: bool | None = None
     udyam_reg_date: date | None = None
     preferred_lang: Literal["en", "kn"] = "en"
+    # Profile details (shown on the Business Profile page; none affect eligibility)
+    description: str | None = Field(default=None, max_length=500)
+    email: str | None = Field(default=None, max_length=254)
+    address: str | None = Field(default=None, max_length=300)
+    website: str | None = Field(default=None, max_length=200)
+    gstin: str | None = None
+    pan: str | None = None
+    established_year: int | None = Field(default=None, ge=1900, le=2100)
+    products: list[str] = Field(default_factory=list, max_length=20)
+    team: list[TeamMemberIn] = Field(default_factory=list, max_length=10)
+    documents: dict[str, Literal["have", "missing", "unknown"]] = Field(default_factory=dict)
+
+    @field_validator("email")
+    @classmethod
+    def business_email_ok(cls, v: str | None) -> str | None:
+        if v and not EMAIL_RE.match(v.strip()):
+            raise ValueError("Enter a valid email address")
+        return v.strip().lower() if v else None
+
+    @field_validator("gstin")
+    @classmethod
+    def business_gstin_ok(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        v = v.strip().upper()
+        if not GSTIN_RE.match(v) or not gstin_checksum_ok(v):
+            raise ValueError("GSTIN format or check digit is invalid")
+        return v
+
+    @field_validator("pan")
+    @classmethod
+    def pan_ok(cls, v: str | None) -> str | None:
+        if not v:
+            return None
+        v = v.strip().upper()
+        if not PAN_RE.match(v):
+            raise ValueError("PAN should look like ABCDE1234F")
+        return v
+
+    @field_validator("products")
+    @classmethod
+    def products_ok(cls, v: list[str]) -> list[str]:
+        out = [x.strip() for x in v if x.strip()]
+        if any(len(x) > 60 for x in out):
+            raise ValueError("Keep each product or service under 60 characters")
+        return list(dict.fromkeys(out))
+
+    @field_validator("documents")
+    @classmethod
+    def docs_ok(cls, v: dict) -> dict:
+        bad = [k for k in v if k not in BUSINESS_DOC_KINDS]
+        if bad:
+            raise ValueError(f"Unknown document type: {', '.join(bad)}")
+        return v
 
     @field_validator("udyam_no")
     @classmethod
@@ -233,3 +304,29 @@ class SimMessageIn(BaseModel):
 
 EVIDENCE_KINDS = ("po", "invoice", "delivery_proof", "acceptance_reply",
                   "ledger", "communications", "udyam_cert")
+
+
+class MilestoneIn(BaseModel):
+    """A planned delivery or payment stage of a purchase order."""
+    title: str = Field(min_length=1, max_length=120)
+    due_date: date
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    invoice_id: str | None = None
+
+
+class MilestonePatch(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    due_date: date | None = None
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    invoice_id: str | None = None
+
+
+class NoteIn(BaseModel):
+    body: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("body")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Write something in the note")
+        return v.strip()

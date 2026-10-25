@@ -2,18 +2,18 @@
 
 import {
   ArrowLeft, CalendarClock, CheckCircle2, Circle, CircleAlert, FileText, Handshake, IndianRupee, Pencil,
-  ReceiptIndianRupee, Scale, Send, ShieldCheck, Trash2, Truck, UserRound,
+  MessageSquareText, ReceiptIndianRupee, Scale, Send, ShieldCheck, Trash2, Truck, UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   Badge, Button, Card, cx, Dialog, ErrorState, EstimateNote, Field, inputClass, LoadingState, PayStatusBadge, Toast,
 } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { EVIDENCE_LABEL, formatDate, formatINR, todayISO } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
-import type { CaseDetail, Evaluation, InvoiceDetail, InvoiceRow } from "@/types/api";
+import type { CaseDetail, Evaluation, InvoiceDetail, InvoiceNote, InvoiceRow } from "@/types/api";
 
 type Check = { label: string; result: "Passed" | "Needs review" | "Not checked" | "Disputed"; detail: string };
 const RESULT_STYLE = {
@@ -142,12 +142,13 @@ export default function InvoicePage() {
                 <TimelineItem done={row.status === "paid"} warn={row.days_overdue > 0} icon={<ReceiptIndianRupee size={14} />} title="Payment due"
                   sub={inv.agreed_due_date ? "Date agreed in writing (max 45 days)" : "No credit period agreed: 15 days from acceptance"}
                   date={row.days_overdue > 0 ? `${formatDate(row.last_day_to_pay)} · ${row.days_overdue} days overdue` : formatDate(row.last_day_to_pay)} />
-                {sent.map((f) => (
-                  <TimelineItem key={f.id} done icon={<Send size={14} />} title={["", "Friendly nudge sent", "Firm reminder sent", "Formal demand sent"][f.step]} sub={f.reply_received ? "Buyer replied" : "No reply recorded"} date={formatDate(f.sent_on)} />
-                ))}
-                {inv.payments.map((p) => (
-                  <TimelineItem key={p.id} done icon={<IndianRupee size={14} />} title="Payment received" sub={formatINR(p.amount)} date={formatDate(p.paid_on)} />
-                ))}
+                {/* Reminders and payments in date order (they interleave in real cases). */}
+                {[
+                  ...sent.map((f) => ({ key: f.id, on: f.sent_on ?? "", node: (
+                    <TimelineItem key={f.id} done icon={<Send size={14} />} title={["", "Friendly nudge sent", "Firm reminder sent", "Formal demand sent"][f.step]} sub={f.reply_received ? "Buyer replied" : "No reply recorded"} date={formatDate(f.sent_on)} />) })),
+                  ...inv.payments.map((p) => ({ key: p.id, on: p.paid_on, node: (
+                    <TimelineItem key={p.id} done icon={<IndianRupee size={14} />} title="Payment received" sub={formatINR(p.amount)} date={formatDate(p.paid_on)} />) })),
+                ].sort((a, b) => a.on.localeCompare(b.on)).map((e) => e.node)}
                 <TimelineItem last done={row.status === "paid"} icon={<CheckCircle2 size={14} />} title={row.status === "paid" ? "Invoice paid in full" : "Awaiting payment"} sub={row.status === "paid" ? "Statutory interest may still be claimable" : `${formatINR(row.unpaid)} still unpaid`} date={row.status === "paid" ? "Done" : "Pending"} />
               </ol>
             </Card>
@@ -237,6 +238,7 @@ export default function InvoicePage() {
             </ul>
             <Link href={`/cases/${c.id}`} className="mt-3 inline-block text-sm font-semibold text-brand-600 hover:underline">Update on the case page</Link>
           </Card>
+          <NotesCard invoiceId={inv.id} />
         </div>
       </div>
       <EstimateNote />
@@ -314,5 +316,54 @@ function EditDialog({ inv, onClose, onSaved }: { inv: InvoiceDetail; onClose: ()
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     </Dialog>
+  );
+}
+
+/** Free-text notes on one invoice: calls made, what the buyer's accounts team said, etc. */
+function NotesCard({ invoiceId }: { invoiceId: string }) {
+  const [notes, setNotes] = useState<InvoiceNote[] | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api.listNotes(invoiceId).then(setNotes).catch((e) => { setNotes([]); setError(e instanceof ApiError ? e.message : "Couldn't load notes."); });
+  }, [invoiceId]);
+  const add = async () => {
+    if (!text.trim()) return setError("Write something first.");
+    setBusy(true); setError(null);
+    try {
+      const n = await api.addNote(invoiceId, text.trim());
+      setNotes((x) => [n, ...(x ?? [])]); setText("");
+    } catch (e) { setError(e instanceof ApiError ? e.message : "Couldn't save the note."); }
+    finally { setBusy(false); }
+  };
+  const remove = async (id: string) => {
+    try { await api.deleteNote(id); setNotes((x) => (x ?? []).filter((n) => n.id !== id)); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Couldn't delete the note."); }
+  };
+  const when = (iso: string) => new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+  return (
+    <Card title={<span className="flex items-center gap-2"><MessageSquareText size={20} className="text-brand-600" aria-hidden /> Notes</span>}>
+      <form onSubmit={(e) => { e.preventDefault(); add(); }} className="space-y-2">
+        <label htmlFor="note-text" className="sr-only">New note</label>
+        <textarea id="note-text" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} rows={2}
+          placeholder="e.g. Called accounts team; they asked for the delivery challan." className={inputClass} />
+        <Button type="submit" variant="primary" disabled={busy} className="py-1.5">{busy ? "Saving…" : "Add note"}</Button>
+      </form>
+      {error && <p role="alert" className="mt-2 text-sm text-red-700">{error}</p>}
+      {notes === null ? <p className="mt-3 text-sm text-slate-500">Loading notes…</p> : notes.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-600">No notes yet. Record calls, replies and anything the buyer said.</p>
+      ) : (
+        <ul className="mt-3 space-y-3">{notes.map((n) => (
+          <li key={n.id} className="rounded-lg bg-slate-50 p-3 text-sm">
+            <div className="flex items-start justify-between gap-2">
+              <p className="whitespace-pre-wrap break-words">{n.body}</p>
+              <button type="button" aria-label="Delete note" onClick={() => remove(n.id)} className="shrink-0 rounded p-1 text-slate-500 hover:bg-red-50 hover:text-red-700"><Trash2 size={14} aria-hidden /></button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">{when(n.created_at)}</p>
+          </li>))}
+        </ul>
+      )}
+    </Card>
   );
 }

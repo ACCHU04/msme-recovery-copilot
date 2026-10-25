@@ -26,7 +26,7 @@ in the root README (step 7) on the real project.
 ```bash
 # Postgres 15+ running locally; create a database and apply the migrations
 createdb ls03_e2e
-for f in supabase/tests/supabase_stub.sql supabase/migrations/00{1,2,3}_*.sql; do psql -d ls03_e2e -f $f; done
+for f in supabase/tests/supabase_stub.sql supabase/migrations/00{1,2,3,4}_*.sql; do psql -d ls03_e2e -f $f; done
 
 export STANDIN_DB=postgresql://postgres@127.0.0.1:5432/ls03_e2e JWT_SECRET=e2e-secret-at-least-32-characters-long
 cd e2e

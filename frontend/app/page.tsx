@@ -1,10 +1,12 @@
 "use client";
 
-import { AlarmClock, ArrowRight, BellRing, FilePlus2, FileText, Gavel, Hourglass, Plus, Scale, TriangleAlert, Wallet, Zap } from "lucide-react";
+import { AlarmClock, BellRing, Calculator, ClipboardCheck, FilePlus2, FileSignature, FileText, Gavel, Hourglass, Plus, TriangleAlert, Wallet, Zap } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { contractRef } from "@/lib/contracts";
 import { InvoicesTable, InvoiceStatusChart } from "@/components/dashboard";
-import { Badge, Card, ErrorState, EstimateNote, inputClass, KpiCard, LoadingState } from "@/components/ui";
+import { Badge, Button, Card, Dialog, ErrorState, EstimateNote, Field, inputClass, KpiCard, LoadingState } from "@/components/ui";
 import { api } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { useViewer } from "@/lib/auth/viewer";
@@ -30,6 +32,15 @@ const sumCents = (rows: InvoiceRow[], k: "amount" | "paid" | "unpaid") => rows.r
 export default function Dashboard() {
   const { data, error, loading, reload } = useAsync(load, []);
   const [period, setPeriod] = useState("all");
+  const [pickContract, setPickContract] = useState(false);
+  const router = useRouter();
+  const openCases = (data?.cases ?? []).filter((c) => c.status !== "archived");
+  /** Invoices belong to a contract (purchase order). One contract: go straight there. */
+  const addInvoice = () => {
+    if (openCases.length === 0) router.push("/cases/new");
+    else if (openCases.length === 1) router.push(`/contracts/${openCases[0].id}?add=invoice`);
+    else setPickContract(true);
+  };
   const first = (useViewer()?.name ?? "").split(" ")[0];
 
   const years = [...new Set((data?.invoices ?? []).map((r) => r.invoice_date.slice(0, 4)))].sort().reverse();
@@ -50,9 +61,10 @@ export default function Dashboard() {
             <option value="all">All time</option>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
-          <Link href="/cases/new" className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700">
-            <Plus size={18} aria-hidden /> Add case
-          </Link>
+          <button type="button" onClick={addInvoice} disabled={!data}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+            <Plus size={18} aria-hidden /> Add invoice
+          </button>
         </div>
       </div>
 
@@ -94,7 +106,7 @@ export default function Dashboard() {
                       <tr key={c.id} className="border-b border-slate-100 last:border-0">
                         <td className="py-3 pl-3 font-medium"><Link href={`/cases/${c.id}`} className="hover:underline">{c.buyer_name}</Link></td>
                         <td className="py-3 text-right tabular-nums">{formatINR(ev.totals.total)}</td>
-                        <td className="py-3 pl-4"><Badge tone="blue">{ev.next_action.label}</Badge></td>
+                        <td className="py-3 pl-4"><span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-blue-200">{ev.next_action.label}</span></td>
                       </tr>))}
                     </tbody>
                   </table>
@@ -118,15 +130,19 @@ export default function Dashboard() {
           </div>
 
           <section aria-labelledby="qa" className="rounded-xl border border-blue-100 bg-blue-50/60 p-5">
-            <div className="grid gap-4 lg:grid-cols-[260px_repeat(3,minmax(0,1fr))]">
-              <div className="flex items-start gap-3">
-                <span className="rounded-full bg-brand-600 p-3 text-white"><Zap size={20} aria-hidden /></span>
-                <div><h2 id="qa" className="text-lg font-bold">Quick actions</h2><p className="text-sm text-slate-600">The next step for your receivables.</p></div>
-              </div>
+            <div className="mb-4 flex items-center gap-3">
+              <span className="rounded-full bg-brand-600 p-3 text-white"><Zap size={20} aria-hidden /></span>
+              <div><h2 id="qa" className="text-lg font-bold">Quick actions</h2><p className="text-sm text-slate-600">The next step for your receivables.</p></div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <button type="button" onClick={addInvoice} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-left hover:border-brand-600">
+                <span className="rounded-lg bg-blue-50 p-2.5 text-brand-600"><FilePlus2 size={20} aria-hidden /></span>
+                <span className="flex-1"><span className="block font-semibold">Add invoice</span><span className="block text-sm text-slate-600">Record an invoice under one of your contracts.</span></span>
+              </button>
               {[
-                { href: "/cases/new", icon: FilePlus2, title: "Add a case", body: "Record a buyer, invoices and payments." },
-                { href: "/assistant", icon: ArrowRight, title: "Get the next step", body: "See what to do next and draft the message." },
-                { href: "/legal", icon: Scale, title: "Check your rights", body: "Deadlines, interest and when the Act applies." },
+                { href: "/cases/new", icon: FileSignature, title: "Add contract", body: "A new buyer and purchase order." },
+                { href: "/legal?tab=calculator", icon: Calculator, title: "Calculate interest", body: "What the buyer owes under s.16." },
+                { href: "/reports", icon: ClipboardCheck, title: "Prepare evidence", body: "Checklist and a printable case report." },
               ].map(({ href, icon: Icon, title, body }) => (
                 <Link key={href} href={href} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 hover:border-brand-600">
                   <span className="rounded-lg bg-blue-50 p-2.5 text-brand-600"><Icon size={20} aria-hidden /></span>
@@ -138,6 +154,22 @@ export default function Dashboard() {
           <EstimateNote />
         </>
       )}
+      {pickContract && <PickContract cases={openCases} onClose={() => setPickContract(false)} onPick={(id) => router.push(`/contracts/${id}?add=invoice`)} />}
     </div>
+  );
+}
+
+function PickContract({ cases, onClose, onPick }: { cases: CaseSummary[]; onClose: () => void; onPick: (id: string) => void }) {
+  const [id, setId] = useState(cases[0]?.id ?? "");
+  return (
+    <Dialog title="Add an invoice" onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onPick(id)} disabled={!id}>Continue</Button></>}>
+      <Field label="Which contract is it for?" htmlFor="pick-contract">
+        <select id="pick-contract" value={id} onChange={(e) => setId(e.target.value)} className={inputClass}>
+          {cases.map((c) => <option key={c.id} value={c.id}>{contractRef(c)} · {c.buyer_name}</option>)}
+        </select>
+      </Field>
+      <p className="mt-3 text-sm text-slate-600">New buyer or order? <Link href="/cases/new" className="font-medium text-brand-600 underline">Add a contract</Link> first.</p>
+    </Dialog>
   );
 }
