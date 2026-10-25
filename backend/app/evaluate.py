@@ -18,7 +18,7 @@ from recovery_engine import (
 
 from copilot import Followup, promise_statuses, recommend, reconcile
 
-from .store import Row, Store
+from .store import Row, Store, parallel
 
 ENGINE_VERSION = "0.1.0"
 ZERO = Decimal("0.00")
@@ -82,22 +82,37 @@ def _group_by(rows: list[Row], key: str) -> dict[str, list[Row]]:
 def load_business_bundle(store: Store, business_id: str) -> dict[str, Any]:
     """Batch-load a business's active cases and all related rows in a small fixed number
     of queries instead of N+1 roundtrips per case and per invoice."""
-    business = store.get("businesses", business_id) or {}
-    cases = [c for c in store.select("cases", business_id=business_id)
-             if c.get("status") != "archived"]
-    buyers = {b["id"]: b for b in store.select("buyers", business_id=business_id)}
+    # Three rounds of queries; the queries inside each round run side by side (parallel()).
+    business, all_cases, buyer_rows = parallel(
+        store,
+        lambda: store.get("businesses", business_id) or {},
+        lambda: store.select("cases", business_id=business_id),
+        lambda: store.select("buyers", business_id=business_id),
+    )
+    cases = [c for c in all_cases if c.get("status") != "archived"]
+    buyers = {b["id"]: b for b in buyer_rows}
     case_ids = [c["id"] for c in cases]
-    invoices = store.select("invoices", case_id=case_ids) if case_ids else []
+    if case_ids:
+        invoices, evidence, promises, followups = parallel(
+            store,
+            lambda: store.select("invoices", case_id=case_ids),
+            lambda: store.select("evidence_items", case_id=case_ids),
+            lambda: store.select("promises", case_id=case_ids),
+            lambda: store.select("followups", case_id=case_ids),
+        )
+    else:
+        invoices, evidence, promises, followups = [], [], [], []
     inv_ids = [i["id"] for i in invoices]
+    payments = store.select("payments", invoice_id=inv_ids) if inv_ids else []
     return {
         "business": business,
         "cases": cases,
         "buyers": buyers,
         "invoices_by_case": _group_by(invoices, "case_id"),
-        "payments_by_inv": _group_by(store.select("payments", invoice_id=inv_ids) if inv_ids else [], "invoice_id"),
-        "evidence_by_case": _group_by(store.select("evidence_items", case_id=case_ids) if case_ids else [], "case_id"),
-        "promises_by_case": _group_by(store.select("promises", case_id=case_ids) if case_ids else [], "case_id"),
-        "followups_by_case": _group_by(store.select("followups", case_id=case_ids) if case_ids else [], "case_id"),
+        "payments_by_inv": _group_by(payments, "invoice_id"),
+        "evidence_by_case": _group_by(evidence, "case_id"),
+        "promises_by_case": _group_by(promises, "case_id"),
+        "followups_by_case": _group_by(followups, "case_id"),
     }
 
 

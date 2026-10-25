@@ -12,6 +12,17 @@ import { decide, type Viewer } from "@/lib/auth/access";
 import { authEnabled, SUPABASE_ANON_KEY, SUPABASE_URL, VIEWER_HEADER } from "@/lib/auth/config";
 import { hardenCookie, REMEMBER_COOKIE, type CookieOpts } from "@/lib/auth/cookies";
 
+/** The `sub` (user id) inside an access token, read without verifying it: only a hint. */
+function subjectOf(token?: string): string | undefined {
+  try {
+    const part = token?.split(".")[1];
+    if (!part) return undefined;
+    const json = atob(part.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(part.length / 4) * 4, "="));
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub;
+    return typeof sub === "string" ? sub : undefined;
+  } catch { return undefined; }
+}
+
 export async function middleware(req: NextRequest) {
   if (!authEnabled) {
     const headers = new Headers(req.headers);
@@ -41,12 +52,22 @@ export async function middleware(req: NextRequest) {
   let viewer: Viewer | null = null;
   let user: { id: string; email?: string; email_confirmed_at?: string | null } | null = null;
   if (hadSession) {
-    const { data } = await supabase.auth.getUser();
+    // getUser() asks Supabase Auth to confirm the session (one network round trip). The
+    // profile read is started at the same time using the user id in the session cookie, so
+    // the two round trips overlap. The profile is only used if getUser() confirms that same
+    // id; otherwise it is read again for the confirmed user. The cookie id is never trusted.
+    const { data: { session } } = await supabase.auth.getSession();
+    const profileOf = (id: string) => supabase.from("profiles")
+      .select("full_name, email, role, approval_status, business_name")
+      .eq("id", id).maybeSingle();
+    const hinted = subjectOf(session?.access_token);
+    const [{ data }, early] = await Promise.all([
+      supabase.auth.getUser(),
+      hinted ? profileOf(hinted) : Promise.resolve(null),
+    ]);
     user = data.user;
     if (user) {
-      const { data: p } = await supabase.from("profiles")
-        .select("full_name, email, role, approval_status, business_name")
-        .eq("id", user.id).maybeSingle();
+      const { data: p } = early && hinted === user.id ? early : await profileOf(user.id);
       viewer = {
         id: user.id,
         email: user.email ?? p?.email ?? "",

@@ -21,7 +21,7 @@ from functools import lru_cache
 import jwt
 from fastapi import Header, HTTPException, Request
 
-from .store import Store
+from .store import Store, parallel
 
 
 ROLES = ("supplier", "buyer", "adviser", "admin")
@@ -71,11 +71,11 @@ def auth_context(request: Request, authorization: str | None = Header(default=No
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Sign in to continue.")
     user_id = verify_token(authorization.split(" ", 1)[1].strip(), settings)
-    profile = store.get("profiles", user_id)
+    profile, owned = parallel(store, lambda: store.get("profiles", user_id),
+                              lambda: store.select("businesses", owner_id=user_id))
     if profile is None or profile.get("role") not in ROLES:
         raise HTTPException(403, "Your account has no profile yet. Sign out and sign in again, "
                                  "or contact support.")
-    owned = store.select("businesses", owner_id=user_id)
     return AuthContext(user_id=user_id, business_id=owned[0]["id"] if owned else None,
                        role=profile["role"], approved=profile.get("approval_status") == "approved")
 

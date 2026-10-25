@@ -12,12 +12,28 @@ from __future__ import annotations
 import copy
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol, TypeVar
 
 import httpx
 
 Row = dict[str, Any]
+T = TypeVar("T")
+
+# Independent reads against Supabase run side by side: each is a network round trip, and
+# waiting for them one after another is what made the dashboard slow. Tasks submitted here
+# never wait on other tasks, so the pool cannot deadlock.
+_POOL = ThreadPoolExecutor(max_workers=32, thread_name_prefix="store-read")
+
+
+def parallel(store: Any, *calls: Callable[[], T]) -> list[T]:
+    """Run independent zero-argument read calls; concurrently for a remote store, in order
+    for the in-memory one (where they cost nothing). Results keep the order of `calls`."""
+    if len(calls) < 2 or not getattr(store, "remote", False):
+        return [c() for c in calls]
+    futures = [_POOL.submit(c) for c in calls]
+    return [f.result() for f in futures]
 
 
 class Store(Protocol):
@@ -375,6 +391,8 @@ class MemoryStore:
 
 # ---------------------------------------------------------------- supabase
 class SupabaseStore:
+    remote = True   # see parallel()
+
     def __init__(self, url: str, service_key: str):
         self.base = url.rstrip("/") + "/rest/v1"
         self.client = httpx.Client(timeout=10, headers={
