@@ -135,6 +135,15 @@ describe("registration validation", () => {
 
   it("accepts a complete supplier", () => expect(validateRegistration(base)).toEqual({}));
 
+  it("validates full name and rejects digits or symbols", () => {
+    expect(validateRegistration({ ...base, fullName: "Rajesh123" }).fullName).toMatch(/numbers/);
+    expect(validateRegistration({ ...base, fullName: "12345" }).fullName).toMatch(/numbers/);
+    expect(validateRegistration({ ...base, fullName: "Rajesh@Sharma" }).fullName).toMatch(/letters, spaces/);
+    expect(validateRegistration({ ...base, fullName: "A" }).fullName).toMatch(/Enter your full name/);
+    expect(validateRegistration({ ...base, fullName: "Dr. A. P. J. Abdul-Kalam" })).toEqual({});
+    expect(validateRegistration({ ...base, fullName: "Mary-Jane O'Connor" })).toEqual({});
+  });
+
   it("normalises Indian mobile numbers", () => {
     expect(normalizeMobile("+91 98765-43210")).toBe("+919876543210");
     expect(normalizeMobile("09876543210")).toBe("+919876543210");

@@ -65,8 +65,12 @@ export function validateRegistration(v: RegistrationInput): FieldErrors {
   if (!ACCOUNT_TYPES.includes(type)) e.accountType = "Choose an account type.";
 
   const name = v.fullName.trim();
-  if (name.length < 2) e.fullName = "Enter your full name.";
+  if (!name || name.length < 2) e.fullName = "Enter your full name.";
   else if (name.length > 100) e.fullName = "Use 100 characters or fewer.";
+  else if (/\d/.test(name)) e.fullName = "Full name cannot contain numbers. Use letters only.";
+  else if (!/^[A-Za-z\s.'-]+$/.test(name) || !/[A-Za-z]/.test(name)) {
+    e.fullName = "Full name should only contain letters, spaces, hyphens, and periods.";
+  }
 
   if (type !== "adviser" && !v.businessName.trim()) e.businessName = "Enter your business name.";
   else if (v.businessName.trim().length > 150) e.businessName = "Use 150 characters or fewer.";
