@@ -50,6 +50,7 @@ checks that the case, invoice or payment belongs to the signed-in supplier's bus
 | GET | `/api/businesses/me` | Supplier (owner of the data) | The signed-in supplier's business profile |
 | POST | `/api/businesses` | Supplier | Create or update the business profile (partial updates keep other fields) |
 | POST | `/api/cases` | Supplier (owner of the data) | Create a contract/case with its buyer |
+| GET | `/api/dashboard` | Supplier (owner of the data) | Invoices and cases for the dashboard from one data load |
 | GET | `/api/cases` | Supplier (owner of the data) | Case list for the ageing board: live totals and bucket per case |
 | GET | `/api/cases/{case_id}` | Supplier (owner of the data) | One case with invoices, payments and evidence |
 | PATCH | `/api/cases/{case_id}` | Supplier (owner of the data) | Change case facts (PO amount, dispute, allocation, status) |

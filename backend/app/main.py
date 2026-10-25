@@ -6,6 +6,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from .api.routes import router
@@ -33,6 +34,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
     # AI legal Q&A: off (prepared answers only) unless GEMINI_API_KEY is set.
     app.state.llm = GeminiClient(settings.gemini_api_key, settings.gemini_model) if settings.gemini_api_key else None
     app.state.llm_limiter = RateLimiter()
+    app.add_middleware(GZipMiddleware, minimum_size=1000)   # JSON lists shrink 5-10x
     app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins,
                        allow_methods=["*"], allow_headers=["*"])
 

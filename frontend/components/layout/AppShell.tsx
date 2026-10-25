@@ -77,7 +77,7 @@ function GlobalSearch() {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<InvoiceRow[] | null>(null);
-  const load = () => { if (!rows) api.listInvoices().then(setRows).catch(() => setRows([])); };
+  const load = () => { if (!rows) api.dashboard().then((d) => setRows(d.invoices)).catch(() => setRows([])); };
   const results = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s || !rows) return [];
@@ -97,7 +97,7 @@ function GlobalSearch() {
           {!rows && <p className="px-3 py-2 text-slate-500">Searching…</p>}
           {rows && results.length === 0 && <p className="px-3 py-2 text-slate-500">No invoices or buyers match “{q}”.</p>}
           {results.map((r) => (
-            <Link key={r.id} href={`/invoices/${r.id}`} className="flex justify-between gap-3 px-3 py-2 hover:bg-slate-50">
+            <Link prefetch={false} key={r.id} href={`/invoices/${r.id}`} className="flex justify-between gap-3 px-3 py-2 hover:bg-slate-50">
               <span><span className="font-medium">{r.number}</span> <span className="text-slate-500">· {r.buyer_name}</span></span>
               <span className="tabular-nums text-slate-600">{formatINR(r.amount)}</span>
             </Link>
@@ -111,7 +111,8 @@ function GlobalSearch() {
 function Alerts() {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<InvoiceRow[] | null>(null);
-  useEffect(() => { api.listInvoices().then(setRows).catch(() => setRows([])); }, []);
+  // Same request as the dashboard page, so on the dashboard only one request is sent.
+  useEffect(() => { api.dashboard().then((d) => setRows(d.invoices)).catch(() => setRows([])); }, []);
   const alerts = (rows ?? []).filter((r) => r.status === "overdue" || r.status === "due_soon")
     .sort((a, b) => b.days_overdue - a.days_overdue).slice(0, 5);
   return (
@@ -126,7 +127,7 @@ function Alerts() {
           <p className="px-2 py-1 text-xs font-semibold uppercase text-slate-500">Payment alerts</p>
           {alerts.length === 0 && <p className="px-2 py-2 text-sm text-slate-600">Nothing overdue or due this week.</p>}
           {alerts.map((r) => (
-            <Link key={r.id} href={`/invoices/${r.id}`} onClick={() => setOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
+            <Link prefetch={false} key={r.id} href={`/invoices/${r.id}`} onClick={() => setOpen(false)} className="block rounded-lg px-2 py-2 text-sm hover:bg-slate-50">
               <span className="font-medium">{r.number}</span> · {r.buyer_name}
               <span className={cx("block text-xs", r.status === "overdue" ? "text-red-700" : "text-amber-700")}>
                 {r.status === "overdue" ? `${r.days_overdue} days overdue · ${formatINR(r.unpaid)} unpaid` : `Due ${formatDate(r.last_day_to_pay)} (${r.days_left} days)`}
@@ -197,12 +198,12 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
 
   const sidebar = (
     <div className="flex h-full flex-col bg-navy-800 text-white">
-      <div className="px-5 py-4"><Link href={home} aria-label="Settle45, MSME Payment Recovery Assistant, home"><Logo /></Link></div>
+      <div className="px-5 py-4"><Link prefetch={false} href={home} aria-label="Settle45, MSME Payment Recovery Assistant, home"><Logo /></Link></div>
       <nav aria-label="Main" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = isActive(path, href);
           return (
-            <Link key={href} href={href} aria-current={active ? "page" : undefined}
+            <Link prefetch={false} key={href} href={href} aria-current={active ? "page" : undefined}
               className={cx("flex items-center gap-3 rounded-lg px-3 py-2 text-[15px] font-medium",
                 "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
                 active ? "bg-brand-600 text-white shadow-sm" : "text-white/85 hover:bg-white/10 hover:text-white")}>
@@ -214,7 +215,7 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
       <div className="m-3 rounded-xl bg-navy-700/80 p-3">
         <p className="flex items-center gap-2 font-semibold"><LifeBuoy size={18} aria-hidden /> Need help?</p>
         <p className="mt-1 text-xs text-white/80">How deadlines and interest are worked out.</p>
-        <Link href="/legal" className="mt-2 flex items-center justify-center gap-2 rounded-lg border border-white/40 py-1.5 text-sm font-medium hover:bg-white/10">
+        <Link prefetch={false} href="/legal" className="mt-2 flex items-center justify-center gap-2 rounded-lg border border-white/40 py-1.5 text-sm font-medium hover:bg-white/10">
           <BookOpenText size={16} aria-hidden /> Open the guide
         </Link>
       </div>
@@ -241,7 +242,7 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
           <div className="hidden min-w-0 flex-1 sm:block">{isSupplier && <GlobalSearch />}</div>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             {isSupplier ? (
-              <Link href="/profile" className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 md:flex">
+              <Link prefetch={false} href="/profile" className="hidden items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 md:flex">
                 <span className="rounded-md bg-brand-600 p-1 text-white"><Building2 size={16} aria-hidden /></span>
                 <span className="max-w-44 truncate">{business ?? "Set up business"}</span>
               </Link>
@@ -265,8 +266,8 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
               {userOpen && (
                 <div className="absolute right-0 z-40 mt-2 w-52 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg">
                   <p className="truncate px-3 py-2 text-xs text-slate-500">{viewer.email}</p>
-                  {isSupplier && <Link href="/profile" className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-slate-50"><UserRound size={16} aria-hidden /> Business profile</Link>}
-                  <Link href="/settings" className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-slate-50"><Settings size={16} aria-hidden /> Account settings</Link>
+                  {isSupplier && <Link prefetch={false} href="/profile" className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-slate-50"><UserRound size={16} aria-hidden /> Business profile</Link>}
+                  <Link prefetch={false} href="/settings" className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-slate-50"><Settings size={16} aria-hidden /> Account settings</Link>
                   {signOutButton}
                 </div>
               )}

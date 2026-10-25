@@ -20,7 +20,7 @@ only a few short hops inside one city, instead of trips to the USA.
 
 ### 1. Supabase (Mumbai)
 1. New project → Region **South Asia (Mumbai)**.
-2. SQL Editor: run `supabase/migrations/001` … `006` in order, then `supabase/seed.sql` (optional demo data).
+2. SQL Editor: run `supabase/migrations/001` … `007` in order (**007 is the big speed-up**: one round trip per page instead of eight), then `supabase/seed.sql` (optional demo data).
 3. Authentication → URL configuration: Site URL = your Vercel address; add `https://<your-site>/auth/callback` to the redirect URLs.
 4. Note the Project URL, anon key and service-role key (Project Settings → API).
 
@@ -82,3 +82,10 @@ Leave the `NEXT_PUBLIC_SUPABASE_*` variables empty so the frontend runs in demo 
 | Free hosting sleeps when idle | First request after idle can take tens of seconds | Fly always-on machine / Render paid instance |
 | Backend far from Supabase | Every database query crosses regions | Backend and Supabase both in Mumbai |
 | Repeated loads of the same data | Same lists fetched again on every page | 20 s read cache, parallel queries, no saves while browsing (already in the code) |
+| 8 database queries per page | 3 rounds of round trips | `business_bundle()` (migration 007): **1** round trip; falls back to the queries if 007 is missing |
+| Role re-read on every API call | 1 round trip per request | Profile and business cached 30 s per user in the backend |
+| Dashboard asked the backend twice | 2 full data loads | `GET /api/dashboard`: one load, shared with the alerts bell |
+| Sidebar links pre-loaded in the background | Each ran the sign-in check: 26 Supabase calls on opening the dashboard | Sidebar prefetch off: 4 calls |
+| Uncompressed JSON | about 17 KB per dashboard | gzip: about 3 KB |
+
+Measured with 150 ms added to every database call: dashboard data **804 ms → 200 ms** (20 round trips → 1).

@@ -14,7 +14,7 @@ import { useAsync } from "@/lib/useAsync";
 import type { CaseSummary, InvoiceRow, NextAction, Totals } from "@/types/api";
 
 async function load() {
-  const [invoices, cases] = await Promise.all([api.listInvoices(), api.listCases()]);
+  const { invoices, cases } = await api.dashboard();
   const open = cases.filter((c) => c.totals && Number(c.totals.total) > 0 && c.status !== "settled");
   const evals = await Promise.all(open.slice(0, 6).map(async (c) => {
     if (c.next_action && c.totals) return { c, ev: { totals: c.totals, next_action: c.next_action } };

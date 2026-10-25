@@ -36,7 +36,8 @@ def url():
                   "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
                   "migrations/004_profile_notes_milestones.sql",
                   "migrations/005_buyer_links_case_shares.sql",
-                  "migrations/006_indexes_and_constraints.sql", "seed.sql"]:
+                  "migrations/006_indexes_and_constraints.sql",
+                  "migrations/007_business_bundle.sql", "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -313,3 +314,14 @@ def test_duplicate_invoice_number_refused_by_database(url):
         with pytest.raises(errors.UniqueViolation):
             c.execute("insert into invoices (case_id, number, invoice_date, amount) values "
                       "('33333333-3333-3333-3333-333333333333', 'INV-114', '2026-03-08', 1)")
+
+
+def test_business_bundle_is_backend_only(url):
+    uid, case, _ = _supplier_with_case(url)
+    with as_user(url, uid) as c:            # even the owner cannot call it directly
+        with pytest.raises(errors.InsufficientPrivilege):
+            c.execute("select business_bundle('11111111-1111-1111-1111-111111111111')")
+    with psycopg.connect(url) as c:         # the backend (service role) gets everything in one call
+        c.execute("set role service_role")
+        b = c.execute("select business_bundle('11111111-1111-1111-1111-111111111111')").fetchone()[0]
+    assert len(b["invoices"]) >= 2 and b["business"]["name"] == "Sri Lakshmi Packaging"

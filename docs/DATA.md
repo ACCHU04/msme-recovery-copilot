@@ -45,9 +45,9 @@ adviser_reviews: admin decisions on adviser accounts (append-only log)
 
 ## Changing the database
 
-Every change is a numbered migration in `supabase/migrations/`, run in order (001 → 006),
+Every change is a numbered migration in `supabase/migrations/`, run in order (001 → 007),
 never a manual edit in the dashboard. `supabase/tests/test_rls.py` applies all of them plus
-`seed.sql` to a fresh Postgres and runs 32 security and data tests.
+`seed.sql` to a fresh Postgres and runs 33 security and data tests.
 
 ## Backup and restore
 
