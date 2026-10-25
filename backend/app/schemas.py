@@ -399,3 +399,17 @@ class BlockerPatch(BaseModel):
     note: str | None = Field(default=None, max_length=1000)
     reported_on: date | None = None
     resolved_on: date | None = None
+
+
+
+class ConfirmationIn(BaseModel):
+    """A buyer's answer on the public confirmation page (no account needed)."""
+    response: Literal["received_ok", "issue"]
+    name: str = Field(min_length=2, max_length=100)
+    note: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def issue_needs_note(self):
+        if self.response == "issue" and not (self.note or "").strip():
+            raise ValueError("Please describe the problem.")
+        return self

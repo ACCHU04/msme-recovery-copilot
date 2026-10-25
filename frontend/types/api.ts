@@ -392,3 +392,10 @@ export interface AdviserCase {
   findings: Finding[];
   status: string;
 }
+
+export interface ConfirmationLink {
+  id: string; invoice_id: string; created_at: string | null; expires_at: string | null;
+  used_at: string | null; response: "received_ok" | "issue" | null; responder_name: string | null; note: string | null;
+  /** Only in the response that creates the link. */
+  path?: string;
+}

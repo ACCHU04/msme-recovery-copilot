@@ -1,8 +1,7 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption,
-} from "@/types/api";
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, ConfirmationLink } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
 
@@ -230,6 +229,9 @@ export const api = {
   legalStatus: () => request<{ ai_enabled: boolean; model: string | null }>("/api/legal/status"),
   legalAsk: (question: string) => request<LegalAnswer>("/api/legal/ask", { method: "POST", body: { question }, timeoutMs: 30000 }),
 
+  listConfirmationLinks: (invoiceId: string) => request<ConfirmationLink[]>(`/api/invoices/${invoiceId}/confirmation-links`),
+  createConfirmationLink: (invoiceId: string) =>
+    request<ConfirmationLink & { path: string }>(`/api/invoices/${invoiceId}/confirmation-links`, { method: "POST" }),
   listNotes: (invoiceId: string) => request<InvoiceNote[]>(`/api/invoices/${invoiceId}/notes`),
   addNote: (invoiceId: string, body: string) => request<InvoiceNote>(`/api/invoices/${invoiceId}/notes`, { method: "POST", body: { body } }),
   deleteNote: (id: string) => request(`/api/notes/${id}`, { method: "DELETE" }),

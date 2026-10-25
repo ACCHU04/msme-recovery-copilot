@@ -362,3 +362,18 @@ def test_buyer_reads_only_invoices_raised_to_it(url):
         assert {r[0] for r in c.execute("select id from cases")} == mine
         cur = c.execute("update invoices set amount = 1")    # read-only: no row may change
         assert cur.rowcount == 0
+
+
+def test_confirmation_links_owner_read_only(url):
+    uid, case, inv = _supplier_with_case(url)
+    other = signup(url, "supplier")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("insert into confirmation_links (case_id, invoice_id, token_hash, expires_at) "
+                  "values (%s, %s, %s, now() + interval '30 days')", (case, inv, "a" * 64))
+    with as_user(url, uid) as c:
+        assert c.execute("select count(*) from confirmation_links").fetchone()[0] == 1
+        with pytest.raises(errors.InsufficientPrivilege):      # created only by the backend
+            c.execute("insert into confirmation_links (case_id, invoice_id, token_hash, expires_at) "
+                      "values (%s, %s, %s, now())", (case, inv, "b" * 64))
+    with as_user(url, other) as c:
+        assert c.execute("select count(*) from confirmation_links").fetchone()[0] == 0

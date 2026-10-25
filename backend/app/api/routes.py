@@ -19,7 +19,7 @@ from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
 from .. import doc_check, legal_ai
 from ..evaluate import _jsonable
-from ..schemas import (EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
+from ..schemas import (ConfirmationIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
                        PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn,
@@ -787,3 +787,116 @@ def list_adviser_cases(store: Store = Depends(get_store), ctx: AuthContext = Dep
             "status": case.get("status"),
         })
     return out
+
+
+
+# ---------------------------------------------------------------- C4 buyer confirmation links
+import hashlib as _hashlib
+import secrets as _secrets
+from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+
+CONFIRM_LINK_DAYS = 30
+
+
+def _token_hash(token: str) -> str:
+    return _hashlib.sha256(token.encode()).hexdigest()
+
+
+def _link_out(link: dict) -> dict:
+    return {k: link.get(k) for k in ("id", "invoice_id", "created_at", "expires_at", "used_at",
+                                     "response", "responder_name", "note")}
+
+
+@router.post("/invoices/{invoice_id}/confirmation-links", status_code=201)
+def create_confirmation_link(invoice_id: str, store: Store = Depends(get_store),
+                             bid: str = Depends(current_business_id)):
+    """A one-time link the supplier sends to the buyer. Only a hash of the token is stored,
+    so the link is shown once: share it right away."""
+    inv, case = _own_invoice(store, invoice_id, bid)
+    token = _secrets.token_urlsafe(24)
+    now = _dt.now(_tz.utc)
+    link = store.insert("confirmation_links", {
+        "case_id": case["id"], "invoice_id": invoice_id, "token_hash": _token_hash(token),
+        "created_at": now.isoformat(), "expires_at": (now + _td(days=CONFIRM_LINK_DAYS)).isoformat(),
+        "used_at": None, "response": None, "responder_name": None, "note": None})
+    return {**_link_out(link), "path": f"/confirm/{token}"}
+
+
+@router.get("/invoices/{invoice_id}/confirmation-links")
+def list_confirmation_links(invoice_id: str, store: Store = Depends(get_store),
+                            bid: str = Depends(current_business_id)):
+    _own_invoice(store, invoice_id, bid)
+    rows = store.select("confirmation_links", invoice_id=invoice_id)
+    return sorted((_link_out(r) for r in rows), key=lambda r: r["created_at"] or "", reverse=True)
+
+
+def _link_by_token(store: Store, token: str) -> tuple[dict, dict, dict]:
+    if not 20 <= len(token) <= 100:
+        raise HTTPException(404, "This link is not valid.")
+    found = store.select("confirmation_links", token_hash=_token_hash(token))
+    if not found:
+        raise HTTPException(404, "This link is not valid.")
+    link = found[0]
+    inv = store.get("invoices", link["invoice_id"])
+    case = store.get("cases", link["case_id"]) if inv else None
+    if not inv or not case:
+        raise HTTPException(404, "This link is not valid.")
+    return link, inv, case
+
+
+def _expired(link: dict) -> bool:
+    return _dt.fromisoformat(str(link["expires_at"]).replace("Z", "+00:00")) < _dt.now(_tz.utc)
+
+
+@router.get("/public/confirm/{token}")
+def view_confirmation(token: str, store: Store = Depends(get_store)):
+    """Public: the buyer sees only this invoice's basic details. No sign-in, no other data."""
+    link, inv, case = _link_by_token(store, token)
+    business = store.get("businesses", case["business_id"]) or {}
+    buyer = store.get("buyers", case["buyer_id"]) or {}
+    return {"supplier_name": business.get("name"), "buyer_name": buyer.get("name"),
+            "invoice_number": inv["number"], "invoice_date": inv["invoice_date"],
+            "amount": str(inv["amount"]), "delivery_date": inv.get("delivery_date"),
+            "expired": _expired(link) and not link.get("used_at"),
+            "answered": bool(link.get("used_at")), "response": link.get("response"),
+            "answered_at": link.get("used_at")}
+
+
+@router.post("/public/confirm/{token}")
+def answer_confirmation(token: str, body: ConfirmationIn, store: Store = Depends(get_store)):
+    """Public, one-time. 'received_ok' records the buyer's written acceptance as evidence;
+    'issue' records a documented payment blocker for the supplier to act on."""
+    link, inv, case = _link_by_token(store, token)
+    if link.get("used_at"):
+        raise HTTPException(409, "This link has already been answered. Thank you.")
+    if _expired(link):
+        raise HTTPException(410, "This link has expired. Please ask the supplier for a new one.")
+    now = _dt.now(_tz.utc)
+    today = now.date()
+    name, note = body.name.strip(), (body.note or "").strip() or None
+    store.update("confirmation_links", link["id"], {
+        "used_at": now.isoformat(), "response": body.response, "responder_name": name, "note": note})
+    within = False
+    if body.response == "received_ok":
+        store.upsert("evidence_items", {"case_id": case["id"], "kind": "acceptance_reply",
+                                        "status": "have"}, ["case_id", "kind"])
+        text = (f"{name} confirmed receipt of {inv['number']} in good order via the confirmation "
+                f"link on {human(today)}.")
+    else:
+        delivered = inv.get("delivery_date")
+        within = bool(delivered) and today <= date.fromisoformat(str(delivered)) + _td(days=15)
+        store.upsert("evidence_items", {"case_id": case["id"], "kind": "communications",
+                                        "status": "have"}, ["case_id", "kind"])
+        store.insert("payment_blockers", {
+            "case_id": case["id"], "invoice_id": inv["id"], "reason": "other",
+            "source": "documented", "disputed_amount": None,
+            "note": f"Raised by {name} via the confirmation link: {note}",
+            "reported_on": today.isoformat(), "resolved_on": None})
+        text = (f"{name} raised a problem with {inv['number']} via the confirmation link on "
+                f"{human(today)}: {note}"
+                + (" This was within 15 days of delivery, so it may count as a written objection "
+                   "under s.2(b). If it is about the goods, record the objection date on the invoice."
+                   if within else ""))
+    store.insert("invoice_notes", {"invoice_id": inv["id"], "body": text[:1000],
+                                   "created_at": now.isoformat()})
+    return {"ok": True, "response": body.response, "within_objection_window": within}

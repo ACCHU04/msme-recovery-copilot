@@ -160,7 +160,7 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
     if (authEnabled) return;
     const v = demoViewer();
     setDemo(v);
-    if (!v && path !== "/login" && path !== "/register") router.replace("/login");
+    if (!v && path !== "/login" && path !== "/register" && !path.startsWith("/confirm/")) router.replace("/login");
   }, [authEnabled, path, router]);
   useEffect(() => {
     if (viewer && isSupplier && !bare) api.getBusiness().then((b) => setBusiness(b.name)).catch(() => setBusiness(null));
@@ -172,6 +172,8 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
   }, []);
 
   const wrap = (node: ReactNode) => <ViewerContext.Provider value={viewer ?? null}>{node}</ViewerContext.Provider>;
+  // Public pages for people without an account (e.g. a buyer confirming delivery).
+  if (path.startsWith("/confirm/")) return <div className="min-h-screen bg-canvas">{children}</div>;
   if (bare && (authEnabled || path === "/login" || path === "/register")) {
     return wrap(<div className="min-h-screen bg-canvas">{children}</div>);
   }

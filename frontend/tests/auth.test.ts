@@ -167,3 +167,10 @@ describe("registration validation", () => {
     expect(validateRegistration({ ...base, accountType: "admin" }).accountType).toBeTruthy();
   });
 });
+
+describe("public confirmation page (C4)", () => {
+  it("is open to signed-out visitors and to every role", () => {
+    expect(decide("/confirm/abc123", null)).toEqual({ type: "allow" });
+    expect(decide("/confirm/abc123", null, true)).toEqual({ type: "allow" });
+  });
+});

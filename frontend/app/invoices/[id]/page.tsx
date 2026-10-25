@@ -11,6 +11,7 @@ import {
   Badge, Button, Card, cx, Dialog, ErrorState, EstimateNote, Field, inputClass, LoadingState, PayStatusBadge, Toast,
 } from "@/components/ui";
 import { openAssistant } from "@/components/assistant/Dock";
+import { ConfirmationCard } from "@/components/cases/ConfirmationCard";
 import { api, ApiError } from "@/lib/api";
 import { EVIDENCE_LABEL, formatDate, formatINR, todayISO } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
@@ -257,6 +258,7 @@ export default function InvoicePage() {
               <FileSearch size={16} aria-hidden /> Check a document with AI
             </Button>
           </Card>
+          <Card title="Buyer confirmation"><ConfirmationCard invoiceId={inv.id} invoiceNumber={inv.number} buyerName={c.buyer?.name} /></Card>
           <NotesCard invoiceId={inv.id} />
         </div>
       </div>

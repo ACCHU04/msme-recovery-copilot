@@ -798,3 +798,62 @@ def test_resolving_objection_ends_the_split(client):
     assert r.status_code == 200
     inv = next(i for i in evaluate(client)["invoices"] if i["number"] == "INV-PD-1")
     assert inv["status"] == "computed" and inv["due"]["last_day_to_pay"] == "2026-08-04"
+
+
+# ---------------------------------------------------------------- C4 confirmation links
+INV114 = "44444444-4444-4444-4444-444444444441"
+
+
+def _link(client, inv=INV114):
+    r = client.post(f"/api/invoices/{inv}/confirmation-links")
+    assert r.status_code == 201, r.text
+    return r.json()["path"].split("/confirm/")[1]
+
+
+def test_confirmation_link_public_view_shows_only_basics(client):
+    tok = _link(client)
+    v = client.get(f"/api/public/confirm/{tok}", headers={"X-Business-Id": ""}).json()
+    assert v["invoice_number"] == "INV-114" and v["supplier_name"] == "Sri Lakshmi Packaging"
+    assert set(v) == {"supplier_name", "buyer_name", "invoice_number", "invoice_date", "amount",
+                      "delivery_date", "expired", "answered", "response", "answered_at"}
+    listed = client.get(f"/api/invoices/{INV114}/confirmation-links").json()
+    assert listed and "token_hash" not in listed[0]
+
+
+def test_buyer_confirms_receipt_records_written_acceptance(client):
+    tok = _link(client)
+    r = client.post(f"/api/public/confirm/{tok}", json={"response": "received_ok", "name": "Anand, Stores"})
+    assert r.status_code == 200
+    case = client.get(f"/api/cases/{CASE}").json()
+    assert {e["kind"]: e["status"] for e in case["evidence"]}["acceptance_reply"] == "have"
+    notes = client.get(f"/api/invoices/{INV114}/notes").json()
+    assert any("confirmed receipt" in n["body"] for n in notes)
+    again = client.post(f"/api/public/confirm/{tok}", json={"response": "received_ok", "name": "X Y"})
+    assert again.status_code == 409                          # one time only
+
+
+def test_buyer_raises_issue_creates_documented_blocker(client):
+    tok = _link(client)
+    r = client.post(f"/api/public/confirm/{tok}", json={"response": "issue", "name": "QC team",
+                                                        "note": "12 cartons crushed"})
+    assert r.status_code == 200 and r.json()["within_objection_window"] is False   # delivered 10 Mar
+    blockers = client.app.state.store.select("payment_blockers", invoice_id=INV114)
+    assert any(b["source"] == "documented" and "12 cartons crushed" in b["note"] for b in blockers)
+    assert client.post(f"/api/public/confirm/{_link(client)}",
+                       json={"response": "issue", "name": "QC team"}).status_code == 422   # needs a note
+
+
+def test_invalid_and_expired_links(client):
+    assert client.get("/api/public/confirm/not-a-real-token-xxxxxxxxxx").status_code == 404
+    tok = _link(client)
+    store = client.app.state.store
+    link = store.select("confirmation_links", invoice_id=INV114)[0]
+    store.update("confirmation_links", link["id"], {"expires_at": "2020-01-01T00:00:00+00:00"})
+    assert client.get(f"/api/public/confirm/{tok}").json()["expired"] is True
+    assert client.post(f"/api/public/confirm/{tok}",
+                       json={"response": "received_ok", "name": "Late Person"}).status_code == 410
+
+
+def test_other_business_cannot_create_link(secure_client):
+    r = secure_client.post(f"/api/invoices/{INV114}/confirmation-links", headers=bearer(token(STRANGER)))
+    assert r.status_code == 404

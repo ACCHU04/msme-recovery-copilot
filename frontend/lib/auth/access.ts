@@ -35,7 +35,7 @@ const ALL: Role[] = [...ROLES];
 /** Signed-out pages. A fully signed-in user is sent to their dashboard instead. */
 const GUEST_PAGES = ["/login", "/register", "/forgot-password"];
 /** Pages anyone may open, signed in or not. */
-const OPEN_PAGES = ["/auth", "/registered", "/verify-email", "/access-denied"];
+const OPEN_PAGES = ["/auth", "/registered", "/verify-email", "/access-denied", "/confirm"];
 
 /** First match wins. "/" is handled separately (exact match only). */
 const RULES: [prefix: string, roles: Role[]][] = [
