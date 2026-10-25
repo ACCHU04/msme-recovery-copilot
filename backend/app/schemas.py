@@ -423,3 +423,8 @@ class QRCheckIn(BaseModel):
     """The text decoded from an e-invoice QR code (by the browser), and the invoice to compare."""
     text: str = Field(min_length=20, max_length=8000)
     invoice_id: str | None = None
+
+
+class ReminderDismissIn(BaseModel):
+    """C1: hide one reminder. The key comes from GET /api/reminders."""
+    key: str = Field(min_length=3, max_length=200, pattern=r"^[a-z_]+:[0-9a-zA-Z-]+(:\d{4}-\d{2}-\d{2})?$")

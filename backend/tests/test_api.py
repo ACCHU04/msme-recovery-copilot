@@ -962,3 +962,65 @@ def test_evidence_pack_owner_only_and_needs_invoices(client, secure_client):
                              headers=bearer(token(STRANGER))).status_code == 404
     new = client.post("/api/cases", json={"buyer": {"name": "Empty Buyer"}}).json()
     assert client.get(f"/api/cases/{new['id']}/evidence-pack.pdf").status_code == 409
+
+
+# ---------------------------------------------------------------- C1 reminders
+def test_reminders_from_demo_data(client):
+    d = client.get("/api/reminders?as_of=2026-10-26").json()
+    keys = [r["key"] for r in d["items"]]
+    assert "promise_due:75000000-0000-4000-8000-000000000007" in keys
+    assert "due_soon:77000000-0000-4000-8000-000000000004:2026-10-29" in keys
+    assert "no_reply:73000000-0000-4000-8000-000000000010" in keys
+    sev = [r["severity"] for r in d["items"]]
+    assert sev == sorted(sev, key={"high": 0, "warn": 1, "info": 2}.get)
+    due = next(r for r in d["items"] if r["kind"] == "due_soon")
+    assert due["title"] == "INV-198 falls due in 3 days" and due["link"].startswith("/invoices/")
+    assert d["email_available"] is False
+
+
+def test_reminders_broken_promise_and_just_overdue(client):
+    assert client.post(f"/api/cases/{CASE}/promises", json={
+        "made_on": "2026-10-10", "due_date": "2026-10-20", "amount": "10000"}).status_code == 201
+    items = client.get("/api/reminders?as_of=2026-10-26").json()["items"]
+    assert items[0]["kind"] == "promise_broken" and items[0]["severity"] == "high"
+    assert "Nothing arrived by 20 Oct 2026" in items[0]["detail"]
+    # The day after INV-198's last day to pay, it shows as just overdue instead of due soon.
+    later = client.get("/api/reminders?as_of=2026-10-30").json()["items"]
+    kinds = {r["key"].split(":")[1]: r["kind"] for r in later if r["invoice_id"]}
+    assert kinds.get("77000000-0000-4000-8000-000000000004") == "became_overdue"
+
+
+def test_reminder_dismiss(client):
+    key = "promise_due:75000000-0000-4000-8000-000000000007"
+    for _ in range(2):   # dismissing twice is harmless
+        assert client.post("/api/reminders/dismiss", json={"key": key}).json() == {"dismissed": key}
+    keys = [r["key"] for r in client.get("/api/reminders?as_of=2026-10-26").json()["items"]]
+    assert key not in keys and len(keys) >= 2
+    assert len(client.app.state.store.tables["reminder_dismissals"]) == 1
+    assert client.post("/api/reminders/dismiss", json={"key": "drop table;"}).status_code == 422
+
+
+def test_reminder_email_only_when_configured(secure_client, monkeypatch):
+    h = bearer(token(OWNER))
+    assert secure_client.post("/api/reminders/email", headers=h).status_code == 503
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("REMINDER_FROM_EMAIL", "reminders@example.com")
+    assert secure_client.get("/api/reminders", headers=h).json()["email_available"] is True
+    assert secure_client.post("/api/reminders/email", headers=h).status_code == 409   # no email saved
+    store = secure_client.app.state.store
+    store.update("profiles", next(p["id"] for p in store.tables["profiles"] if p["id"] == OWNER),
+                 {"email": "owner@example.com"})
+    sent = {}
+
+    class R:
+        status_code = 200
+
+    def fake_post(url, **kw):
+        sent.update(url=url, **kw)
+        return R()
+    monkeypatch.setattr("app.reminders.httpx.post", fake_post)
+    r = secure_client.post("/api/reminders/email?as_of=2026-10-26", headers=h)
+    assert r.status_code == 200 and r.json()["sent"] is True and r.json()["to"] == "owner@example.com"
+    assert sent["url"] == "https://api.resend.com/emails" and sent["json"]["to"] == ["owner@example.com"]
+    assert "INV-198 falls due in 3 days" in sent["json"]["text"] and "re_test" in sent["headers"]["Authorization"]
+    assert secure_client.get("/api/reminders", headers=bearer(token(BUYER))).status_code == 403

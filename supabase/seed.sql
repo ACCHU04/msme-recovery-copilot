@@ -1,4 +1,4 @@
--- Run after migrations 001 to 010.
+-- Run after migrations 001 to 011.
 -- Demo data (all names fictional). Expected result as of 2026-10-25, interest-first:
 --   INV-114 total 144734.20, INV-131 total 101338.41, case total 246072.61
 -- Fixed UUIDs so the frontend and tests can link to them.

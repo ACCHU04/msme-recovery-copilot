@@ -402,6 +402,26 @@ export interface ConfirmationLink {
   path?: string;
 }
 
+export type ReminderKind = "due_soon" | "became_overdue" | "promise_due" | "promise_broken" | "no_reply";
+
+export interface Reminder {
+  key: string;
+  kind: ReminderKind;
+  severity: "high" | "warn" | "info";
+  title: string;
+  detail: string;
+  date: string;
+  case_id: string;
+  invoice_id: string | null;
+  link: string;
+}
+
+export interface Reminders {
+  as_of: string;
+  items: Reminder[];
+  email_available: boolean;
+}
+
 export interface CashFlow {
   as_of: ISODate;
   totals: { owed_now: Money; overdue_invoices: number; interest_so_far: Money; due_next_30_days: Money; promised_next_30_days: Money };

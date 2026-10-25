@@ -377,3 +377,17 @@ def test_confirmation_links_owner_read_only(url):
                       "values (%s, %s, %s, now())", (case, inv, "b" * 64))
     with as_user(url, other) as c:
         assert c.execute("select count(*) from confirmation_links").fetchone()[0] == 0
+
+
+def test_reminder_dismissals_owner_read_only(url):
+    uid, case, _ = _supplier_with_case(url)
+    other = signup(url, "supplier")
+    with psycopg.connect(url, autocommit=True) as c:
+        biz = c.execute("select business_id from cases where id = %s", (case,)).fetchone()[0]
+        c.execute("insert into reminder_dismissals (business_id, key) values (%s, 'no_reply:x1')", (biz,))
+    with as_user(url, uid) as c:
+        assert c.execute("select count(*) from reminder_dismissals").fetchone()[0] == 1
+        with pytest.raises(errors.InsufficientPrivilege):      # written only by the backend
+            c.execute("insert into reminder_dismissals (business_id, key) values (%s, 'due_soon:x2')", (biz,))
+    with as_user(url, other) as c:
+        assert c.execute("select count(*) from reminder_dismissals").fetchone()[0] == 0

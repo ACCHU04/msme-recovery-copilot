@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from recovery_engine.due_date import human
@@ -17,9 +18,9 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, legal_ai
+from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, legal_ai, reminders as reminders_mod
 from ..evaluate import _jsonable
-from ..schemas import (ConfirmationIn, QRCheckIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
+from ..schemas import (ConfirmationIn, QRCheckIn, ReminderDismissIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
                        PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn,
@@ -910,6 +911,49 @@ def cash_flow(as_of: date | None = None, store: Store = Depends(get_store),
     """Owed now, due or promised in the coming weeks, and which cases to chase first."""
     return cashflow_mod.cash_flow(store, bid, as_of)
 
+
+
+# ---------------------------------------------------------------- C1 reminders
+def _dismissed(store: Store, bid: str) -> set[str]:
+    return {r["key"] for r in store.select("reminder_dismissals", business_id=bid)}
+
+
+@router.get("/reminders")
+def list_reminders(as_of: date | None = None, store: Store = Depends(get_store),
+                   bid: str = Depends(current_business_id)):
+    """Today's reminders: due soon, just overdue, promises due or broken, follow-ups unanswered."""
+    items = reminders_mod.build_reminders(store, bid, as_of, _dismissed(store, bid))
+    return {"as_of": (as_of or date.today()).isoformat(), "items": items,
+            "email_available": reminders_mod.email_configured()}
+
+
+@router.post("/reminders/dismiss")
+def dismiss_reminder(body: ReminderDismissIn, store: Store = Depends(get_store),
+                     bid: str = Depends(current_business_id)):
+    store.upsert("reminder_dismissals", {"business_id": bid, "key": body.key}, ["business_id", "key"])
+    return {"dismissed": body.key}
+
+
+@router.post("/reminders/email")
+def email_reminders(as_of: date | None = None, store: Store = Depends(get_store),
+                    bid: str = Depends(current_business_id)):
+    """Send today's reminders to the business owner's email. Only when an email service is set up."""
+    if not reminders_mod.email_configured():
+        raise HTTPException(503, "Email reminders are not set up on this server. In-app reminders still work.")
+    business = store.get("businesses", bid) or {}
+    profile = store.get("profiles", business["owner_id"]) if business.get("owner_id") else None
+    to = (profile or {}).get("email")
+    if not to:
+        raise HTTPException(409, "No email address is saved for this business's owner.")
+    as_of = as_of or date.today()
+    items = reminders_mod.build_reminders(store, bid, as_of, _dismissed(store, bid))
+    if not items:
+        return {"sent": False, "count": 0, "detail": "Nothing to remind you about today."}
+    try:
+        reminders_mod.send_digest(to, business.get("name") or "your business", items, as_of)
+    except (RuntimeError, httpx.HTTPError):
+        raise HTTPException(502, "The email service did not accept the message. Try again later.")
+    return {"sent": True, "count": len(items), "to": to}
 
 
 # ---------------------------------------------------------------- B1 e-invoice QR
