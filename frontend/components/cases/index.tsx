@@ -35,7 +35,7 @@ const STAGES = [
   { label: "Dispute resolution", sub: "MSME ODR portal, if needed" },
 ];
 const CURRENT: Record<string, number> = {
-  close_case: 0, wait_until_due: 0, nudge: 1, confirm_receipt: 1, resolve_dispute: 2, fix_mismatch: 2,
+  close_case: 0, wait_until_due: 0, nudge: 1, chase_undisputed: 1, confirm_receipt: 1, resolve_dispute: 2, fix_mismatch: 2,
   complete_facts: 2, await_promise: 3, firm: 4, demand: 4, collect_evidence: 5, prepare_odr: 6, odr: 6,
   fix_blocker_po: 2, fix_blocker_grn: 2, fix_blocker_amount: 2, fix_blocker: 2,
 };
@@ -277,7 +277,9 @@ export function InvoicesPanel({ ev }: { ev: Evaluation }) {
               <p className="font-medium text-slate-900">{inv.number} · {formatINR(inv.amount)}</p>
               {inv.due && (
                 <p className="text-sm text-slate-600">
-                  {inv.due.acceptance_status === "deemed" ? "Deemed accepted" : inv.due.acceptance_status === "disputed" ? "Acceptance disputed" : "Accepted"}
+                  {inv.status === "partly_disputed"
+                    ? `Partly disputed: ${formatINR(inv.disputed_outstanding)} on hold; the undisputed ${formatINR(inv.undisputed_outstanding)} was accepted`
+                    : inv.due.acceptance_status === "deemed" ? "Deemed accepted" : inv.due.acceptance_status === "disputed" ? "Acceptance disputed" : "Accepted"}
                   {inv.due.acceptance_date && ` ${formatDate(inv.due.acceptance_date)}`}
                   {inv.due.last_day_to_pay && ` · last day to pay ${formatDate(inv.due.last_day_to_pay)}`}
                   {inv.due.interest_start && ` · interest from ${formatDate(inv.due.interest_start)}`}

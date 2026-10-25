@@ -32,10 +32,8 @@ def url():
         c.execute(f"create database {DB} encoding 'UTF8' template template0")
     test_url = ADMIN_URL.rsplit("/", 1)[0] + "/" + DB
     with psycopg.connect(test_url, autocommit=True) as c:
-        for f in ["tests/supabase_stub.sql", "migrations/001_init.sql",
-                  "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
-                  "migrations/004_profile_notes_milestones.sql",
-                  "migrations/005_buyer_links_case_shares.sql", "seed.sql"]:
+        migrations = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "migrations").glob("*.sql"))
+        for f in ["tests/supabase_stub.sql", *migrations, "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -309,3 +307,58 @@ def test_case_sharing_rules(url):
     with as_user(url, other_adv) as c:
         assert c.execute("select count(*) from cases where id = %s", (case,)).fetchone()[0] == 0
 
+
+
+
+def test_disputed_amount_cannot_exceed_invoice(url):
+    with psycopg.connect(url) as c:
+        with pytest.raises(errors.CheckViolation):
+            c.execute("update invoices set disputed_amount = amount + 1 "
+                      "where id = '92000000-0000-4000-8000-000000000004'")
+    with psycopg.connect(url) as c:
+        v = c.execute("select disputed_amount from invoices "
+                      "where id = '92000000-0000-4000-8000-000000000004'").fetchone()[0]
+    assert v == 15400
+
+
+ADVISER_DEMO = "88888888-8888-8888-8888-888888888888"
+
+
+def test_adviser_reads_only_shared_cases_invoices_and_evidence(url):
+    with psycopg.connect(url) as c:
+        shared = {r[0] for r in c.execute(
+            "select case_id from case_shares where adviser_id = %s", (ADVISER_DEMO,))}
+        all_cases = {r[0] for r in c.execute("select id from cases")}
+        inv_shared = c.execute("select count(*) from invoices where case_id = any(%s)", (list(shared),)).fetchone()[0]
+    assert shared and all_cases - shared, "seed must have shared and unshared cases"
+    with as_user(url, str(ADVISER_DEMO)) as c:
+        seen_cases = {r[0] for r in c.execute("select id from cases")}
+        seen_inv_cases = {r[0] for r in c.execute("select case_id from invoices")}
+        seen_ev_cases = {r[0] for r in c.execute("select case_id from evidence_items")}
+        n_inv = c.execute("select count(*) from invoices").fetchone()[0]
+    assert seen_cases == shared                 # was: none visible (policy compared cs.case_id = cs.id)
+    assert seen_inv_cases <= shared and n_inv == inv_shared   # was: every case's invoices
+    assert seen_ev_cases <= shared              # was: every case's evidence
+
+
+def test_new_adviser_without_shares_sees_nothing(url):
+    adv = signup(url, "adviser")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("update profiles set approval_status = 'approved' where id = %s", (adv,))
+    with as_user(url, adv) as c:
+        for t in ("cases", "invoices", "evidence_items", "payments", "buyers", "businesses"):
+            assert c.execute(f"select count(*) from {t}").fetchone()[0] == 0, t
+
+
+def test_buyer_reads_only_invoices_raised_to_it(url):
+    buyer = "22222222-2222-2222-2222-222222222221"
+    with psycopg.connect(url) as c:
+        mine = {r[0] for r in c.execute(
+            "select c.id from cases c join buyers b on b.id = c.buyer_id where b.profile_id = %s", (buyer,))}
+        total = c.execute("select count(*) from cases").fetchone()[0]
+    assert mine and len(mine) < total
+    with as_user(url, buyer) as c:
+        assert {r[0] for r in c.execute("select case_id from invoices")} <= mine
+        assert {r[0] for r in c.execute("select id from cases")} == mine
+        cur = c.execute("update invoices set amount = 1")    # read-only: no row may change
+        assert cur.rowcount == 0

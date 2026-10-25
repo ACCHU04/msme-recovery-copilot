@@ -217,11 +217,12 @@ def patch_invoice(invoice_id: str, body: InvoicePatch, store: Store = Depends(ge
     patch = {k: v for k, v in _jsonify(body).items() if v is not None and k != "clear"}
     merged = {**{k: inv.get(k) for k in ("number", "invoice_date", "amount", "delivery_date",
                                          "agreed_due_date", "objection_date",
-                                         "objection_removed_date")}, **patch}
+                                         "objection_removed_date", "disputed_amount")}, **patch}
     for k in body.clear:
         merged[k] = None
     if body.clear and "objection_date" in body.clear:
         merged["objection_removed_date"] = None
+        merged["disputed_amount"] = None
     try:
         InvoiceIn(**merged)
     except ValidationError as e:

@@ -737,3 +737,64 @@ def test_payment_blockers_crud_and_draft(client):
     assert del_res.status_code == 200
     assert client.delete(f"/api/blockers/{blk['id']}").status_code == 404
 
+
+
+# ---------------------------------------------------------------- A2 partial disputes
+def _partial_invoice(client, disputed="30000", objection="2026-07-08"):
+    r = client.post(f"/api/cases/{CASE}/invoices", json={
+        "number": "INV-PD-1", "invoice_date": "2026-07-01", "amount": "100000",
+        "delivery_date": "2026-07-02", "objection_date": objection, "disputed_amount": disputed})
+    assert r.status_code == 201, r.text
+    return r.json()["id"]
+
+
+def test_partial_dispute_splits_the_invoice(client):
+    _partial_invoice(client)
+    ev = evaluate(client)
+    inv = next(i for i in ev["invoices"] if i["number"] == "INV-PD-1")
+    assert inv["status"] == "partly_disputed"
+    assert inv["disputed_outstanding"] == "30000.00"
+    assert inv["due"]["last_day_to_pay"] == "2026-07-17"          # undisputed part: delivery + 15
+    assert Decimal(inv["interest"]["interest_outstanding"]) > 0     # interest runs on the 70,000
+    assert Decimal(inv["undisputed_outstanding"]) > Decimal("70000")
+    assert "A9" in " ".join(inv["due"]["warnings"])
+
+
+def test_partial_dispute_next_step_and_drafts_leave_out_disputed_part(client):
+    _partial_invoice(client)
+    ev = evaluate(client)
+    na = ev["next_action"]
+    assert na["action"] == "chase_undisputed" and na["rule"] == "R1a-partial-dispute"
+    total = Decimal(ev["totals"]["total"])
+    for kind in ("nudge", "firm", "demand"):
+        body = draft(client, kind).json()["body"]
+        assert "Rs 30,000.00 on INV-PD-1" in body, kind
+    firm = draft(client, "firm").json()["body"]
+    from app.drafts import _inr
+    assert _inr(total - Decimal("30000")) in firm                  # Indian grouping, e.g. Rs 3,19,282.05
+
+
+def test_whole_invoice_dispute_still_blocks(client):
+    client.post(f"/api/cases/{CASE}/invoices", json={
+        "number": "INV-WD-1", "invoice_date": "2026-07-01", "amount": "50000",
+        "delivery_date": "2026-07-02", "objection_date": "2026-07-08"})
+    assert evaluate(client)["next_action"]["action"] == "resolve_dispute"
+
+
+@pytest.mark.parametrize("body,msg", [
+    ({"disputed_amount": "150000", "objection_date": "2026-07-08"}, "more than the invoice"),
+    ({"disputed_amount": "1000"}, "needs the date"),
+])
+def test_disputed_amount_validation(client, body, msg):
+    r = client.post(f"/api/cases/{CASE}/invoices", json={
+        "number": "INV-PD-X", "invoice_date": "2026-07-01", "amount": "100000",
+        "delivery_date": "2026-07-02", **body})
+    assert r.status_code == 422 and msg in r.text
+
+
+def test_resolving_objection_ends_the_split(client):
+    inv_id = _partial_invoice(client)
+    r = client.patch(f"/api/invoices/{inv_id}", json={"objection_removed_date": "2026-07-20"})
+    assert r.status_code == 200
+    inv = next(i for i in evaluate(client)["invoices"] if i["number"] == "INV-PD-1")
+    assert inv["status"] == "computed" and inv["due"]["last_day_to_pay"] == "2026-08-04"

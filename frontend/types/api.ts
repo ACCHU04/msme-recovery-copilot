@@ -82,6 +82,8 @@ export interface Invoice {
   agreed_due_date: ISODate | null;
   objection_date: ISODate | null;
   objection_removed_date: ISODate | null;
+  /** Part of the invoice the buyer objected to in writing; null = whole invoice (if objected). */
+  disputed_amount?: Money | null;
   payments: Payment[];
 }
 
@@ -127,7 +129,7 @@ export interface InterestResult {
 }
 
 export type InvoiceStatus =
-  | "computed" | "disputed" | "missing_inputs" | "rate_unavailable"
+  | "computed" | "disputed" | "partly_disputed" | "missing_inputs" | "rate_unavailable"
   | "not_eligible" | "eligibility_uncertain";
 
 export interface EvaluatedInvoice {
@@ -139,6 +141,10 @@ export interface EvaluatedInvoice {
   due: DueResult | null;
   interest: InterestResult | null;
   message?: string;
+  /** Only when status is "partly_disputed". */
+  disputed_amount?: Money;
+  disputed_outstanding?: Money;
+  undisputed_outstanding?: Money;
 }
 
 export interface Finding {

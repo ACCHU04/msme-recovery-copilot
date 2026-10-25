@@ -102,6 +102,44 @@ def load_business_bundle(store: Store, business_id: str) -> dict[str, Any]:
     }
 
 
+ASSUMPTION_A9 = ("A9 Partial objection: the undisputed part of the invoice is treated as accepted "
+                 "on delivery, and payments are applied to it first.")
+
+
+def _partial_split(inv: Row, amount: Decimal, pays: list, as_of: date, interest_allowed: bool,
+                   allocation: str) -> dict | None:
+    """When the buyer objected in writing to only part of an invoice and the objection is
+    still open: the undisputed part follows the normal due date (and interest if eligible);
+    the disputed part has no due date until the objection is removed. Payments go to the
+    undisputed part first. Returns None when the whole invoice is disputed."""
+    raw = inv.get("disputed_amount")
+    if raw in (None, "") or not inv.get("objection_date") or inv.get("objection_removed_date"):
+        return None
+    disputed = _money(raw)
+    if disputed <= ZERO or disputed >= amount:
+        return None
+    undisputed = amount - disputed
+    due = compute_due_date(_d(inv["delivery_date"]), _d(inv.get("agreed_due_date")))
+    paid = sum((p.amount for p in pays if p.paid_on <= as_of), ZERO)
+    res = None
+    if interest_allowed:
+        try:
+            res = compute_interest(undisputed, due.interest_start, as_of,
+                                   [p for p in pays if p.paid_on <= as_of], allocation=allocation)
+        except (RateUnavailable, ValueError):
+            res = None
+    if res is not None:
+        und_principal, und_interest = res.principal_outstanding, res.interest_outstanding
+        excess = max(paid - (undisputed + res.interest_accrued_total), ZERO)
+    else:
+        und_principal, und_interest = max(undisputed - paid, ZERO), ZERO
+        excess = max(paid - undisputed, ZERO)
+    disputed_left = max(disputed - excess, ZERO)
+    return {"due": due, "interest": res, "undisputed_amount": undisputed,
+            "disputed_amount": disputed, "undisputed_principal": und_principal,
+            "undisputed_interest": und_interest, "disputed_outstanding": disputed_left}
+
+
 def invoice_outstanding(store: Store, invoice: Row, on: date) -> Decimal:
     """Everything owed on one invoice at the start of day `on` (before any new payment
     that day): principal plus statutory interest where the engine can compute it,
@@ -117,6 +155,9 @@ def invoice_outstanding(store: Store, invoice: Row, on: date) -> Decimal:
     case_invoices = store.select("invoices", case_id=invoice["case_id"])
     if _eligibility(store, case, case_invoices).verdict != Verdict.ELIGIBLE:
         return simple
+    split = _partial_split(invoice, amount, pays, on, True, case.get("allocation") or "interest_first")
+    if split is not None:
+        return split["undisputed_principal"] + split["undisputed_interest"] + split["disputed_outstanding"]
     due = compute_due_date(_d(invoice["delivery_date"]), _d(invoice.get("agreed_due_date")),
                            _d(invoice.get("objection_date")),
                            _d(invoice.get("objection_removed_date")))
@@ -191,7 +232,34 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
         )
         entry["due"] = _jsonable(due)
 
-        if due.acceptance_status == AcceptanceStatus.DISPUTED:
+        split = (_partial_split(inv, amount, pays, as_of, interest_allowed,
+                                case.get("allocation") or "interest_first")
+                 if due.acceptance_status == AcceptanceStatus.DISPUTED else None)
+        if split is not None:
+            und_due = split["due"]
+            entry["due"] = _jsonable(und_due)
+            entry["due"]["basis"] = (
+                f"The buyer objected in writing to Rs {split['disputed_amount']:,.2f} of this invoice. "
+                f"The undisputed Rs {split['undisputed_amount']:,.2f} is treated as accepted on "
+                f"delivery: {und_due.basis}")
+            entry["due"]["warnings"] = [*entry["due"].get("warnings", []), ASSUMPTION_A9]
+            und_total = split["undisputed_principal"] + split["undisputed_interest"]
+            entry.update(
+                status="partly_disputed",
+                interest=_jsonable(split["interest"]) if split["interest"] else None,
+                principal_outstanding=str(split["undisputed_principal"] + split["disputed_outstanding"]),
+                disputed_amount=str(split["disputed_amount"]),
+                disputed_outstanding=str(split["disputed_outstanding"]),
+                undisputed_outstanding=str(und_total),
+                message=(f"Rs {split['disputed_amount']:,.2f} is disputed and has no due date until "
+                         f"the objection is resolved. The undisputed part can be claimed now"
+                         + (" with interest." if split["interest"] else ".")))
+            tot_p += split["undisputed_principal"] + split["disputed_outstanding"]
+            tot_i += split["undisputed_interest"]
+            running = und_total > 0 and as_of > und_due.interest_start
+            buckets.append(_bucket(und_due.last_day_to_pay, as_of, running and bool(split["interest"]))
+                           if und_total > 0 else "not_due")
+        elif due.acceptance_status == AcceptanceStatus.DISPUTED:
             entry.update(status="disputed", principal_outstanding=str(simple_principal),
                          message="The buyer's objection is unresolved, so no due date or "
                                  "interest is shown.")

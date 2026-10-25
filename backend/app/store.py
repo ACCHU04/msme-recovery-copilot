@@ -330,7 +330,9 @@ DEMO_ROWS: dict[str, list[Row]] = {
         {"id": "92000000-0000-4000-8000-000000000004",
          "case_id": "92000000-0000-4000-8000-000000000003", "number": "INV-TKW-025",
          "invoice_date": "2026-05-20", "amount": "110000.00", "delivery_date": "2026-05-22",
-         "agreed_due_date": None, "objection_date": "2026-05-28", "objection_removed_date": None},
+         "agreed_due_date": None, "objection_date": "2026-05-28", "objection_removed_date": None,
+         # Buyer rejected 140 of 1,000 pieces in writing: only Rs 15,400 is disputed (A2).
+         "disputed_amount": "15400.00"},
     ],
     "payments": [
         {"id": "55555555-5555-5555-5555-555555555551",

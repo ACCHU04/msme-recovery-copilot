@@ -1,4 +1,4 @@
--- Run after migrations 001 to 004.
+-- Run after migrations 001 to 008.
 -- Demo data (all names fictional). Expected result as of 2026-10-25, interest-first:
 --   INV-114 total 144734.20, INV-131 total 101338.41, case total 246072.61
 -- Fixed UUIDs so the frontend and tests can link to them.
@@ -394,18 +394,23 @@ on conflict (case_id, kind) do update set
 -- Multi-Role Demo Scenarios: Additional Suppliers, Buyer Links, and Adviser Portal
 -- -----------------------------------------------------------------------------
 
--- Profiles for demo adviser and buyer
-insert into profiles (id, role, approval_status, full_name, email, professional_role, qualifications, business_name)
-values
-  ('88888888-8888-8888-8888-888888888888', 'adviser', 'approved', 'Meera Raghavan, CA',
-   'adviser@example.com', 'Chartered Accountant', 'FCA, DISA (ICAI) · MSME Advisory', null),
-  ('22222222-2222-2222-2222-222222222221', 'buyer', 'approved', 'Kaveri Accounts Desk',
-   'buyer@example.com', null, null, 'Kaveri Foods & Beverages Pvt Ltd')
-on conflict (id) do update set
-  role = excluded.role, approval_status = excluded.approval_status,
-  full_name = excluded.full_name, email = excluded.email,
-  professional_role = excluded.professional_role, qualifications = excluded.qualifications,
-  business_name = excluded.business_name;
+-- Demo adviser and buyer identities. A profile must belong to a sign-in account
+-- (auth.users), so the seed creates the accounts; the sign-up trigger (003) then creates
+-- their profiles. These accounts have no password: they own demo data only. To sign in as
+-- the demo adviser or buyer, register your own account and use the linking guide below.
+insert into auth.users (id, email, raw_user_meta_data, email_confirmed_at) values
+  ('88888888-8888-8888-8888-888888888888', 'adviser@example.com',
+   '{"full_name": "Meera Raghavan, CA", "requested_role": "adviser",
+     "professional_role": "Chartered Accountant", "qualifications": "FCA, DISA (ICAI) · MSME Advisory"}', now()),
+  ('22222222-2222-2222-2222-222222222221', 'buyer@example.com',
+   '{"full_name": "Kaveri Accounts Desk", "requested_role": "buyer",
+     "business_name": "Kaveri Foods & Beverages Pvt Ltd"}', now())
+on conflict (id) do nothing;
+
+-- The trigger leaves advisers pending; the demo adviser is approved (run as the database
+-- owner, which the profile guard allows).
+update profiles set approval_status = 'approved'
+ where id = '88888888-8888-8888-8888-888888888888';
 
 -- Link Kaveri Foods buyer records to the buyer profile
 update buyers
@@ -479,6 +484,9 @@ insert into invoices (id, case_id, number, invoice_date, amount, delivery_date, 
    'INV-TKW-025', '2026-05-20', 110000.00, '2026-05-22', null, '2026-05-28', null)
 on conflict (id) do update set
   number = excluded.number, amount = excluded.amount;
+
+-- Partial objection (migration 008): the buyer rejected 140 of 1,000 pieces, Rs 15,400.
+update invoices set disputed_amount = 15400.00 where id = '92000000-0000-4000-8000-000000000004';
 
 -- Payments
 insert into payments (id, invoice_id, paid_on, amount) values

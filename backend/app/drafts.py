@@ -52,6 +52,18 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
              "pay_by": pay_by, "calculation_as_of": outputs["as_of"]}
     caution = None
 
+    # Part of an invoice disputed in writing: leave it out of the amount asked for.
+    held = [(i["number"], Decimal(i["disputed_outstanding"])) for i in invs
+            if i.get("status") == "partly_disputed" and Decimal(i.get("disputed_outstanding") or "0") > 0]
+    hold = sum((h for _, h in held), Decimal("0"))
+    hold_line = ""
+    if hold > 0:
+        unpaid_simple = max(unpaid_simple - hold, Decimal("0"))
+        total = max(total - hold, Decimal("0"))
+        hold_line = (f" This leaves out {_inr(hold)} on {', '.join(n for n, _ in held)}, which we "
+                     f"are resolving with you separately.")
+        facts.update(unpaid_invoice_value=str(unpaid_simple), total=str(total), disputed_held=str(hold))
+
     if kind == "acceptance_confirm":
         body = (f"Hello {buyer_name} team,\n\nThis is to confirm the delivery against "
                 f"{numbers}. Could you please reply to confirm that the goods were received "
@@ -59,7 +71,7 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                 f"Thank you,\n{business_name}")
     elif kind == "nudge":
         body = (f"Hello {buyer_name} team, hope all is well.\n\nA quick reminder that "
-                f"{numbers} still have {_inr(unpaid_simple)} unpaid. Could you let us know "
+                f"{numbers} still {'has' if len(invs) == 1 else 'have'} {_inr(unpaid_simple)} unpaid.{hold_line} Could you let us know "
                 f"when we can expect the payment?\n\nThanks,\n{business_name}")
     elif kind == "firm":
         promise_line = ""
@@ -74,7 +86,7 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                     "(Section 37(2)(g) of the Income-tax Act, 2025)." if eligible else "")
         amount = total if eligible else unpaid_simple
         body = (f"Hello {buyer_name} team,\n\n{numbers} are past their due dates."
-                f"{promise_line}{interest_line}{tax_line}\n\nPlease arrange payment of {_inr(amount)} "
+                f"{promise_line}{interest_line}{hold_line}{tax_line}\n\nPlease arrange payment of {_inr(amount)} "
                 f"by {_d(pay_by)}. If there is any issue with the invoices, please tell us so "
                 f"we can resolve it.\n\nRegards,\n{business_name}")
     elif kind == "fix_blocker_po":
@@ -116,15 +128,16 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                              "eligibility is not confirmed. Use a firm reminder and consult "
                              "a professional.")
         lines = "\n".join(
-            f"- {i['number']}: due by {_d(i['due']['last_day_to_pay'])}, outstanding "
+            f"- {i['number']}{' (undisputed part)' if i['status'] == 'partly_disputed' else ''}: "
+            f"due by {_d(i['due']['last_day_to_pay'])}, outstanding "
             f"{_inr(i['interest']['total_outstanding'])}" for i in invs
-            if i["status"] == "computed")
+            if i["status"] in ("computed", "partly_disputed") and i.get("interest"))
         body = (f"Dear Sir/Madam,\n\nRe: payment due under Sections 15 and 16 of the Micro, "
                 f"Small and Medium Enterprises Development Act, 2006\n\nThe following "
                 f"invoices from {business_name} remain unpaid beyond the period allowed "
                 f"under Section 15:\n{lines}\n\nAs of {_d(outputs['as_of'])}, the amount due "
                 f"is {_inr(total)}, including compound interest of {_inr(interest)} under "
-                f"Section 16. A month-by-month statement is attached.\n\nWe request payment "
+                f"Section 16.{hold_line} A month-by-month statement is attached.\n\nWe request payment "
                 f"by {_d(pay_by)}. We value our business relationship and would prefer to "
                 f"settle this directly.\n\nYours faithfully,\n{business_name}")
         caution = "Review with a professional before sending a formal demand."

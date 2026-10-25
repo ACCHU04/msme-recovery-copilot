@@ -110,6 +110,26 @@ def recommend(
         return NextAction("close_case", "Mark the case settled", None, None,
                           ["Nothing is outstanding on any invoice."], [], rule="R0-nothing-owed")
 
+    # R1a: the buyer objected to only PART of an invoice (and nothing is wholly disputed):
+    # ask for the undisputed part now, resolve the disputed part separately.
+    partly = [i for i in invoices if i.get("status") == "partly_disputed"]
+    wholly = [i for i in invoices if i.get("status") == "disputed"]
+    if partly and not wholly:
+        held = sum((Decimal(str(i.get("disputed_outstanding") or "0")) for i in partly), Decimal("0"))
+        claim = max(total_outstanding - held, Decimal("0"))
+        if claim > 0:
+            names = ", ".join(i["number"] for i in partly)
+            return NextAction(
+                "chase_undisputed", f"Ask for the undisputed Rs {claim:,.2f} now", 1, "nudge",
+                [f"The buyer disputes only Rs {held:,.2f} on {names}; the rest is not in dispute.",
+                 "The undisputed part was accepted on delivery, so its due date and interest "
+                 "run as normal. Resolve the disputed part separately (replacement, credit note "
+                 "or evidence) so it does not hold up the whole payment."],
+                [f"invoice:{i['number']}.disputed_amount" for i in partly],
+                alternatives=_alternatives(1, 3),
+                caution="Keep the disputed part out of reminders until it is resolved.",
+                rule="R1a-partial-dispute")
+
     # R1: a dispute comes before any payment request
     for fid in ("buyer_dispute", "objection_unresolved"):
         if fid in ids:

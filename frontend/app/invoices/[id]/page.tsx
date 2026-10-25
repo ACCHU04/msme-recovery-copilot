@@ -27,7 +27,9 @@ const RESULT_STYLE = {
 function verify(inv: InvoiceDetail, row: InvoiceRow, all: InvoiceRow[], ev: Evaluation, c: CaseDetail): Check[] {
   const evd = Object.fromEntries(c.evidence.map((e) => [e.kind, e.status]));
   const f = new Set(ev.findings.map((x) => x.id));
-  const due = ev.invoices.find((e) => e.invoice_id === inv.id)?.due;
+  const evi = ev.invoices.find((e) => e.invoice_id === inv.id);
+  const due = evi?.due;
+  const partly = evi?.status === "partly_disputed";
   const dupes = all.filter((r) => r.number.trim().toLowerCase() === inv.number.trim().toLowerCase() && r.id !== inv.id);
   const caseTotal = c.invoices.reduce((s, i) => s + Number(i.amount), 0);
   const before = ev.findings.find((x) => x.id === "invoice_before_po" && x.message.startsWith(inv.number));
@@ -42,8 +44,9 @@ function verify(inv: InvoiceDetail, row: InvoiceRow, all: InvoiceRow[], ev: Eval
       detail: inv.delivery_date ? `Delivered ${formatDate(inv.delivery_date)}. The payment clock runs from here.` : "Without it the due date and interest can't be worked out." },
     { label: "Delivery proof on file", result: evd.delivery_proof === "have" ? "Passed" : "Needs review",
       detail: evd.delivery_proof === "have" ? "Marked as on file for this case." : "No signed challan, e-way bill or courier record marked as on file." },
-    { label: "Buyer acceptance", result: due?.acceptance_status === "disputed" ? "Disputed" : "Passed",
-      detail: due?.acceptance_status === "disputed" ? `Buyer objected in writing on ${formatDate(inv.objection_date)}; not yet resolved.`
+    { label: "Buyer acceptance", result: partly || due?.acceptance_status === "disputed" ? "Disputed" : "Passed",
+      detail: partly ? `Buyer objected in writing on ${formatDate(inv.objection_date)} to ${formatINR(evi?.disputed_amount)} of this invoice. The rest is treated as accepted on delivery.`
+        : due?.acceptance_status === "disputed" ? `Buyer objected in writing on ${formatDate(inv.objection_date)}; not yet resolved.`
         : due?.acceptance_status === "objection_removed" ? `Objection resolved; accepted ${formatDate(due.acceptance_date)}.`
         : evd.acceptance_reply === "have" ? "Written acceptance from the buyer is on file."
         : `Deemed accepted on ${formatDate(due?.acceptance_date)}: no written objection recorded within 15 days of delivery.` },
@@ -125,7 +128,19 @@ export default function InvoicePage() {
             </div>
           </section>
 
-          {evInv?.interest && (
+          {evInv?.status === "partly_disputed" && (
+            <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm sm:grid-cols-2">
+              <div><p className="text-xs font-medium uppercase tracking-wide text-amber-800">Claim now (undisputed)</p>
+                <p className="text-lg font-bold tabular-nums">{formatINR(evInv.undisputed_outstanding)}</p>
+                <p className="text-xs text-slate-600">Accepted on delivery{evInv.interest ? ", with s.16 interest" : ""}.</p></div>
+              <div><p className="text-xs font-medium uppercase tracking-wide text-amber-800">On hold (disputed)</p>
+                <p className="text-lg font-bold tabular-nums">{formatINR(evInv.disputed_outstanding)}</p>
+                <p className="text-xs text-slate-600">No due date until the objection is resolved.</p></div>
+              <p className="col-span-full text-xs text-slate-600">Assumption: payments are applied to the undisputed part first.</p>
+            </div>
+          )}
+
+          {evInv?.interest && evInv.status !== "partly_disputed" && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
               <p><span className="font-semibold">Statutory amount (estimate):</span> {formatINR(evInv.interest.total_outstanding)}, including {formatINR(evInv.interest.interest_outstanding)} interest under s.16 since {formatDate(evInv.due?.interest_start)}.</p>
               <Link href={`/cases/${c.id}`} className="font-medium text-brand-600 underline">See the working</Link>
@@ -296,12 +311,13 @@ function EditDialog({ inv, onClose, onSaved }: { inv: InvoiceDetail; onClose: ()
   const [f, setF] = useState({
     number: inv.number, amount: inv.amount, invoice_date: inv.invoice_date, delivery_date: inv.delivery_date ?? "",
     agreed_due_date: inv.agreed_due_date ?? "", objection_date: inv.objection_date ?? "", objection_removed_date: inv.objection_removed_date ?? "",
+    disputed_amount: inv.disputed_amount ? String(inv.disputed_amount) : "",
   });
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const save = async () => {
     setError(null);
-    const clear = (["delivery_date", "agreed_due_date", "objection_date", "objection_removed_date"] as const).filter((k) => !f[k] && inv[k]);
+    const clear = (["delivery_date", "agreed_due_date", "objection_date", "objection_removed_date", "disputed_amount"] as const).filter((k) => !f[k] && inv[k]);
     const body: Record<string, unknown> = { clear };
     (Object.keys(f) as (keyof typeof f)[]).forEach((k) => { if (f[k] && f[k] !== (inv[k] ?? "")) body[k] = f[k]; });
     try { await api.patchInvoice(inv.id, body); onSaved(); } catch (e) { setError(e instanceof ApiError ? e.message : "Something went wrong."); }
@@ -317,6 +333,11 @@ function EditDialog({ inv, onClose, onSaved }: { inv: InvoiceDetail; onClose: ()
         <Field label="Agreed in writing to pay by" htmlFor="e-agr" hint="Clear it if no credit period was agreed in writing"><input id="e-agr" type="date" value={f.agreed_due_date} onChange={set("agreed_due_date")} className={inputClass} /></Field>
         <Field label="Buyer objected on" htmlFor="e-obj"><input id="e-obj" type="date" max={today} value={f.objection_date} onChange={set("objection_date")} className={inputClass} /></Field>
         <Field label="Objection resolved on" htmlFor="e-objr"><input id="e-objr" type="date" max={today} value={f.objection_removed_date} onChange={set("objection_removed_date")} className={inputClass} /></Field>
+        {f.objection_date && (
+          <Field label="Amount the buyer disputes (₹)" htmlFor="e-disp" hint="Only if they objected to part of the invoice. Leave empty if the whole invoice is disputed.">
+            <input id="e-disp" inputMode="decimal" value={f.disputed_amount} onChange={(e) => setF({ ...f, disputed_amount: e.target.value.replace(/[^\d.]/g, "") })} className={inputClass} />
+          </Field>
+        )}
       </div>
       {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
     </Dialog>

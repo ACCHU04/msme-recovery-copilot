@@ -167,6 +167,8 @@ class InvoiceIn(BaseModel):
     agreed_due_date: date | None = None
     objection_date: date | None = None
     objection_removed_date: date | None = None
+    # Part of the invoice the buyer objected to; None = the whole invoice (when objected).
+    disputed_amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
 
     @field_validator("invoice_date", "delivery_date", "objection_date", "objection_removed_date")
     @classmethod
@@ -182,6 +184,11 @@ class InvoiceIn(BaseModel):
         if (self.objection_removed_date and self.objection_date
                 and self.objection_removed_date < self.objection_date):
             raise ValueError("objection_removed_date cannot be before objection_date")
+        if self.disputed_amount is not None:
+            if not self.objection_date:
+                raise ValueError("A disputed amount needs the date of the buyer's written objection.")
+            if self.disputed_amount > self.amount:
+                raise ValueError("The disputed amount cannot be more than the invoice amount.")
         return self
 
 
@@ -248,8 +255,9 @@ class InvoicePatch(BaseModel):
     agreed_due_date: date | None = None
     objection_date: date | None = None
     objection_removed_date: date | None = None
+    disputed_amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
     clear: list[Literal["delivery_date", "agreed_due_date", "objection_date",
-                        "objection_removed_date"]] = []
+                        "objection_removed_date", "disputed_amount"]] = []
 
     @field_validator("invoice_date", "delivery_date", "objection_date", "objection_removed_date")
     @classmethod
