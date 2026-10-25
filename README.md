@@ -62,7 +62,9 @@ database password somewhere safe.
 
 **2. Create the tables and rules.** Dashboard → SQL Editor → run, in this order:
 `supabase/migrations/001_init.sql`, `002_copilot.sql`, `003_auth_roles.sql`,
-`004_profile_notes_milestones.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
+`004_profile_notes_milestones.sql`, `005_buyer_links_case_shares.sql`,
+`006_indexes_and_constraints.sql`, `007_business_bundle.sql` (loads a business's data in one
+round trip; much faster), then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
 sign-up trigger, column grants and row level security (explained below).
 
 **3. Auth settings.** Dashboard → Authentication:
@@ -266,6 +268,13 @@ and 7 Oct 2026 (5.75%). Earlier dates return `rate_unavailable` instead of guess
 - Not yet run against a live Supabase project. The sign-in flows were tested end to end against a stand-in for Supabase Auth and PostgREST (`e2e/`), and the SQL against real Postgres 16. Run the setup steps above and step 7 once on the real project before relying on it.
 - Supabase's built-in email service is for testing; real users need your own SMTP settings.
 - Adviser case sharing and buyer invoice linking are not built; those dashboards say so.
+
+## Design documents
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): system design, data flow, what breaks first at 10× traffic, stack choices, front-end states
+- [`docs/API.md`](docs/API.md): business rules, error format, every API route and who can call it
+- [`docs/DEPLOY.md`](docs/DEPLOY.md): hosting so it opens fast (Mumbai regions, always-on backend)
+- [`docs/DATA.md`](docs/DATA.md): tables, constraints, indexes, tested backup and restore, file upload rules
 
 ## Demo data for every role
 

@@ -46,6 +46,8 @@ type Init = { method?: string; body?: unknown; timeoutMs?: number };
 const CACHE_MS = 20_000;
 const cache = new Map<string, { at: number; value: Promise<unknown> }>();
 export function clearApiCache() { cache.clear(); }
+/** Store a value we already have (e.g. part of a combined response) as if it had been fetched. */
+function primeCache(path: string, value: unknown) { cache.set(path, { at: Date.now(), value: Promise.resolve(value) }); }
 
 async function request<T>(path: string, init: Init = {}): Promise<T> {
   const isRead = (init.method ?? "GET") === "GET" && init.body === undefined;
@@ -120,6 +122,14 @@ export const api = {
     request<Business>("/api/businesses", { method: "POST", body }),
 
   listCases: () => request<CaseSummary[]>("/api/cases"),
+  /** Dashboard data in one request (one data load on the server). Also fills the cache for
+   *  listInvoices/listCases so the alerts bell and other pages reuse it. */
+  dashboard: async () => {
+    const d = await request<{ invoices: InvoiceRow[]; cases: CaseSummary[] }>("/api/dashboard");
+    primeCache("/api/invoices", d.invoices);
+    primeCache("/api/cases", d.cases);
+    return d;
+  },
   getCase: (id: string) => request<CaseDetail>(`/api/cases/${id}`),
   createCase: (body: { buyer: Record<string, unknown>; contract_date?: string | null }) =>
     request<CaseSummary>("/api/cases", { method: "POST", body }),
@@ -136,6 +146,9 @@ export const api = {
   setEvidence: (caseId: string, kind: EvidenceKind, status: EvidenceStatus) =>
     request(`/api/cases/${caseId}/evidence/${kind}`, { method: "PUT", body: { status } }),
 
+  /** Read-only figures for display (no snapshot saved; cached briefly like other reads). */
+  viewEvaluation: (caseId: string, asOf?: string) =>
+    request<Evaluation>(`/api/cases/${caseId}/evaluation${asOf ? `?as_of=${asOf}` : ""}`),
   evaluate: (caseId: string, asOf?: string) =>
     request<Evaluation>(`/api/cases/${caseId}/evaluate`, {
       method: "POST",

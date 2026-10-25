@@ -16,6 +16,8 @@ AUTH_MODE=demo (default only with STORE=memory, for local work and the offline d
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
+import time
 from functools import lru_cache
 
 import jwt
@@ -61,6 +63,37 @@ def verify_token(token: str, settings) -> str:
     return sub
 
 
+# Profile + business lookups cached for a short time per user (remote store only), so each
+# API request does not wait for a database round trip just to re-read the role. The token
+# itself is still verified on every request. Role or approval changes take effect within
+# AUTH_CACHE_SECONDS; creating a business clears the user's entry at once (forget_user).
+AUTH_CACHE_SECONDS = 30
+_auth_cache: dict[str, tuple[float, dict | None, list]] = {}
+_auth_lock = threading.Lock()
+
+
+def forget_user(user_id: str | None) -> None:
+    with _auth_lock:
+        _auth_cache.pop(user_id or "", None)
+
+
+def _profile_and_business(store: Store, user_id: str) -> tuple[dict | None, list]:
+    remote = getattr(store, "remote", False)
+    if remote:
+        with _auth_lock:
+            hit = _auth_cache.get(user_id)
+        if hit and hit[0] > time.monotonic():
+            return hit[1], hit[2]
+    profile, owned = parallel(store, lambda: store.get("profiles", user_id),
+                              lambda: store.select("businesses", owner_id=user_id))
+    if remote:
+        with _auth_lock:
+            if len(_auth_cache) > 5000:
+                _auth_cache.clear()
+            _auth_cache[user_id] = (time.monotonic() + AUTH_CACHE_SECONDS, profile, owned)
+    return profile, owned
+
+
 def auth_context(request: Request, authorization: str | None = Header(default=None),
                  x_business_id: str | None = Header(default=None)) -> AuthContext:
     settings = request.app.state.settings
@@ -71,8 +104,7 @@ def auth_context(request: Request, authorization: str | None = Header(default=No
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Sign in to continue.")
     user_id = verify_token(authorization.split(" ", 1)[1].strip(), settings)
-    profile, owned = parallel(store, lambda: store.get("profiles", user_id),
-                              lambda: store.select("businesses", owner_id=user_id))
+    profile, owned = _profile_and_business(store, user_id)
     if profile is None or profile.get("role") not in ROLES:
         raise HTTPException(403, "Your account has no profile yet. Sign out and sign in again, "
                                  "or contact support.")

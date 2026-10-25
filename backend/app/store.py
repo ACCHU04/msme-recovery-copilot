@@ -419,6 +419,12 @@ class SupabaseStore:
         r.raise_for_status()
         return r.json()
 
+    def rpc(self, fn: str, args: dict) -> Any:
+        """Call a Postgres function through PostgREST (one round trip)."""
+        r = self.client.post(f"{self.base}/rpc/{fn}", json=args)
+        r.raise_for_status()
+        return r.json()
+
     def get(self, table: str, id: str) -> Row | None:
         rows = self.select(table, id=id)
         return rows[0] if rows else None

@@ -768,3 +768,104 @@ def test_supplier_shares_case_with_approved_adviser_only(secure_client):
     assert secure_client.get("/api/adviser/cases", headers=bearer(token(BUYER))).status_code == 403
     assert secure_client.delete(f"/api/shares/{s.json()['id']}", headers=owner).status_code == 204
     assert secure_client.get("/api/adviser/cases", headers=adv).json() == []
+
+
+def test_read_only_evaluation_saves_nothing(client):
+    store = client.app.state.store
+    before = len(store.select("calculations", case_id=CASE))
+    r = client.get(f"/api/cases/{CASE}/evaluation?as_of=2026-10-25")
+    assert r.status_code == 200 and r.json()["totals"]["total"] == "246072.61"
+    assert len(store.select("calculations", case_id=CASE)) == before
+
+
+def test_unexpected_error_is_json_without_details(monkeypatch):
+    from app import invoices as inv_mod
+    from app.api import routes as routes_mod
+    def boom(*a, **k):
+        raise RuntimeError("secret database detail")
+    monkeypatch.setattr(routes_mod, "list_invoices", boom)
+    c = TestClient(create_app(), raise_server_exceptions=False)
+    r = c.get("/api/invoices")
+    assert r.status_code == 500 and "secret" not in r.text and r.json()["detail"].startswith("Something went wrong")
+
+
+# ---------------------------------------------------------------- speed paths
+def test_dashboard_endpoint_equals_invoices_and_cases(client):
+    d = client.get("/api/dashboard?as_of=2026-10-25").json()
+    assert d["invoices"] == client.get("/api/invoices?as_of=2026-10-25").json()
+    assert d["cases"] == client.get("/api/cases").json()
+
+
+def _bundle_via_rpc_matches_queries():
+    """A store whose rpc('business_bundle') is built from the same rows must give the same bundle."""
+    from app.evaluate import load_business_bundle
+    base = MemoryStore(seed=True)
+
+    class RpcStore(MemoryStore):
+        calls = 0
+        def rpc(self, fn, args):
+            RpcStore.calls += 1
+            bid = args["p_business_id"]
+            cases = self.select("cases", business_id=bid)
+            ids = [c["id"] for c in cases]
+            inv = self.select("invoices", case_id=ids)
+            return {"business": self.get("businesses", bid), "cases": cases,
+                    "buyers": self.select("buyers", business_id=bid), "invoices": inv,
+                    "payments": self.select("payments", invoice_id=[i["id"] for i in inv]),
+                    "evidence": self.select("evidence_items", case_id=ids),
+                    "promises": self.select("promises", case_id=ids),
+                    "followups": self.select("followups", case_id=ids)}
+    fast = RpcStore(seed=True)
+    bid = "11111111-1111-1111-1111-111111111111"
+    return load_business_bundle(fast, bid), load_business_bundle(base, bid), RpcStore.calls
+
+
+def test_bundle_rpc_gives_same_result_as_separate_queries():
+    fast, slow, calls = _bundle_via_rpc_matches_queries()
+    assert calls == 1 and fast == slow
+
+
+def test_bundle_falls_back_when_function_missing():
+    import httpx
+    from app.evaluate import load_business_bundle
+
+    class Missing(MemoryStore):
+        def rpc(self, fn, args):
+            req = httpx.Request("POST", "http://x/rest/v1/rpc/business_bundle")
+            raise httpx.HTTPStatusError("404", request=req, response=httpx.Response(404, request=req))
+    s = Missing(seed=True)
+    b = load_business_bundle(s, "11111111-1111-1111-1111-111111111111")
+    assert len(b["cases"]) == 9 and s._no_bundle_rpc is True
+
+
+def test_auth_cache_for_remote_store_and_cleared_on_new_business():
+    from app import auth as auth_mod
+
+    class Remote(MemoryStore):
+        remote = True
+        reads = 0
+        def get(self, table, id):
+            if table == "profiles":
+                Remote.reads += 1
+            return super().get(table, id)
+    store = Remote(seed=True)
+    for uid, role, status in PROFILES:
+        store.insert("profiles", {"id": uid, "role": role, "approval_status": status})
+    auth_mod._auth_cache.clear()
+    settings = Settings(store="memory", auth_mode="supabase", supabase_url=None,
+                        supabase_service_key=None, supabase_jwt_secret=SECRET,
+                        cors_origins=[], demo_business_id="11111111-1111-1111-1111-111111111111")
+    c = TestClient(create_app(settings, store))
+    h = bearer(token(STRANGER))
+    assert c.get("/api/businesses/me", headers=h).status_code == 404
+    assert c.get("/api/businesses/me", headers=h).status_code == 404
+    assert Remote.reads == 1                                   # second request used the cache
+    assert c.post("/api/businesses", json={"name": "New Co", "size": "small", "activity": "services"},
+                  headers=h).status_code == 200
+    assert c.get("/api/businesses/me", headers=h).status_code == 200   # cache was cleared
+    auth_mod._auth_cache.clear()
+
+
+def test_large_responses_are_compressed(client):
+    r = client.get("/api/invoices", headers={"Accept-Encoding": "gzip"})
+    assert r.status_code == 200 and r.headers.get("content-encoding") == "gzip"

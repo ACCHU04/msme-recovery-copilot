@@ -5,6 +5,7 @@ results/exceptions to per-invoice statuses, sums totals, and picks a bucket.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, is_dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -19,6 +20,8 @@ from recovery_engine import (
 from copilot import Followup, promise_statuses, recommend, reconcile
 
 from .store import Row, Store, parallel
+
+log = logging.getLogger("settle45")
 
 ENGINE_VERSION = "0.1.0"
 ZERO = Decimal("0.00")
@@ -79,9 +82,43 @@ def _group_by(rows: list[Row], key: str) -> dict[str, list[Row]]:
     return out
 
 
+def _bundle_from_rpc(store: Any, business_id: str) -> dict[str, Any] | None:
+    """One round trip via the business_bundle() database function (migration 007).
+    Returns None, and stops trying, if the function is not installed."""
+    if not hasattr(store, "rpc") or getattr(store, "_no_bundle_rpc", False):
+        return None
+    try:
+        data = store.rpc("business_bundle", {"p_business_id": business_id}) or {}
+    except Exception as e:  # noqa: BLE001
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status in (400, 404):            # function missing or not exposed: use the queries
+            store._no_bundle_rpc = True
+            log.warning("business_bundle() not available (%s); using separate queries. "
+                        "Run supabase/migrations/007_business_bundle.sql to speed up loading.", status)
+            return None
+        raise
+    cases = [c for c in (data.get("cases") or []) if c.get("status") != "archived"]
+    live = {c["id"] for c in cases}
+    invoices = [i for i in (data.get("invoices") or []) if i["case_id"] in live]
+    inv_ids = {i["id"] for i in invoices}
+    return {
+        "business": data.get("business") or {},
+        "cases": cases,
+        "buyers": {b["id"]: b for b in (data.get("buyers") or [])},
+        "invoices_by_case": _group_by(invoices, "case_id"),
+        "payments_by_inv": _group_by([p for p in (data.get("payments") or []) if p["invoice_id"] in inv_ids], "invoice_id"),
+        "evidence_by_case": _group_by([e for e in (data.get("evidence") or []) if e["case_id"] in live], "case_id"),
+        "promises_by_case": _group_by([p for p in (data.get("promises") or []) if p["case_id"] in live], "case_id"),
+        "followups_by_case": _group_by([f for f in (data.get("followups") or []) if f["case_id"] in live], "case_id"),
+    }
+
+
 def load_business_bundle(store: Store, business_id: str) -> dict[str, Any]:
-    """Batch-load a business's active cases and all related rows in a small fixed number
-    of queries instead of N+1 roundtrips per case and per invoice."""
+    """Load a business's active cases and all related rows: one round trip through the
+    business_bundle() database function, or 8 queries in 3 parallel rounds as a fallback."""
+    fast = _bundle_from_rpc(store, business_id)
+    if fast is not None:
+        return fast
     # Three rounds of queries; the queries inside each round run side by side (parallel()).
     business, all_cases, buyer_rows = parallel(
         store,

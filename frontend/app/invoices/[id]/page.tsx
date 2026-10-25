@@ -72,9 +72,10 @@ export default function InvoicePage() {
   const router = useRouter();
   const [dialog, setDialog] = useState<null | "pay" | "edit" | "delete">(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { data, error, loading, reload } = useAsync(async () => {
     const inv = await api.getInvoice(id);
-    const [ev, c, all] = await Promise.all([api.evaluate(inv.case.id), api.getCase(inv.case.id), api.listInvoices()]);
+    const [ev, c, all] = await Promise.all([api.viewEvaluation(inv.case.id), api.getCase(inv.case.id), api.listInvoices()]);
     return { inv, ev, c, all, row: all.find((r) => r.id === id)! };
   }, [id]);
 
@@ -252,7 +253,7 @@ export default function InvoicePage() {
       {dialog === "delete" && (
         <Dialog title={`Delete ${inv.number}?`} onClose={() => setDialog(null)}
           footer={<><Button onClick={() => setDialog(null)}>Cancel</Button>
-            <Button variant="danger" onClick={async () => { await api.deleteInvoice(id); router.replace(`/cases/${c.id}`); }}>Delete invoice and its payments</Button></>}>
+            <Button variant="danger" disabled={deleting} onClick={async () => { setDeleting(true); try { await api.deleteInvoice(id); router.replace(`/cases/${c.id}`); } finally { setDeleting(false); } }}>Delete invoice and its payments</Button></>}>
           <p className="text-sm text-slate-700">This removes the invoice and {inv.payments.length} recorded payment(s) from the case. It can&apos;t be undone.</p>
         </Dialog>
       )}

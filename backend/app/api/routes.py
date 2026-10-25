@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from recovery_engine.due_date import human
-from ..auth import AuthContext, approved_user, current_business_id, supplier
+from ..auth import AuthContext, approved_user, current_business_id, forget_user, supplier
 from ..evaluate import (ENGINE_VERSION, _group_by, evaluate_case, invoice_outstanding,
                         load_business_bundle, settlement_from_totals)
 from copilot import parse_promise
@@ -78,7 +78,9 @@ def upsert_business(body: BusinessIn, store: Store = Depends(get_store),
     row = {**data, "owner_id": ctx.user_id}
     if ctx.business_id:                   # demo mode: keep the requested id
         row["id"] = ctx.business_id
-    return store.insert("businesses", row)
+    created = store.insert("businesses", row)
+    forget_user(ctx.user_id)              # the cached sign-in check must see the new business
+    return created
 
 
 # ---------------------------------------------------------------- cases
@@ -99,15 +101,12 @@ def create_case(body: CaseIn, store: Store = Depends(get_store),
     return {**case, "buyer": buyer}
 
 
-@router.get("/cases")
-def list_cases(store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
+def _case_summaries(store: Store, bid: str, bundle: dict) -> list[dict]:
     """Case list for the ageing board: live totals and bucket per case."""
     out = []
-    bundle = load_business_bundle(store, bid)
     for case in bundle["cases"]:
         if case["status"] == "archived":
             continue
-
         buyer = bundle["buyers"].get(case["buyer_id"])
         summary = {"totals": None, "bucket": None, "eligibility": None, "next_action": None}
         try:
@@ -119,6 +118,22 @@ def list_cases(store: Store = Depends(get_store), bid: str = Depends(current_bus
             pass  # no invoices yet
         out.append({**case, "buyer_name": buyer["name"] if buyer else None, **summary})
     return out
+
+
+@router.get("/cases")
+def list_cases(store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
+    """Case list for the ageing board: live totals and bucket per case."""
+    return _case_summaries(store, bid, load_business_bundle(store, bid))
+
+
+@router.get("/dashboard")
+def dashboard(as_of: date | None = None, store: Store = Depends(get_store),
+              bid: str = Depends(current_business_id)):
+    """Everything the dashboard shows, from ONE data load: the same invoices as
+    GET /invoices and the same cases as GET /cases."""
+    bundle = load_business_bundle(store, bid)
+    return {"invoices": list_invoices(store, bid, as_of, bundle=bundle),
+            "cases": _case_summaries(store, bid, bundle)}
 
 
 @router.get("/cases/{case_id}")
@@ -347,6 +362,18 @@ def evaluate(case_id: str, body: EvaluateIn | None = None, store: Store = Depend
         "case_id": case_id, "as_of": result["as_of"], "engine_version": ENGINE_VERSION,
         "inputs": get_case(case_id, store, bid), "outputs": result})
     return {"calculation_id": snap["id"], **result}
+
+
+@router.get("/cases/{case_id}/evaluation")
+def view_evaluation(case_id: str, as_of: date | None = None, store: Store = Depends(get_store),
+                    bid: str = Depends(current_business_id)):
+    """Read-only figures for pages that only display them. Unlike POST /evaluate it saves no
+    calculation snapshot, so viewing a page never writes to the database."""
+    _own_case(store, case_id, bid)
+    try:
+        return evaluate_case(store, case_id, as_of or date.today())
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.get("/cases/{case_id}/settlement")
