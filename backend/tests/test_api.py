@@ -1112,3 +1112,49 @@ def test_evidence_pack_lists_files(client):
     text = " ".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(r.content)).pages)
     assert "Files kept with this case" in text and "purchase-order.pdf" in text
     assert f["sha256"][:16] in text
+
+
+# ---------------------------------------------------------------- C3 Kannada and Hindi drafts
+def _ldraft(client, kind, lang):
+    return client.post(f"/api/cases/{CASE}/drafts", json={"kind": kind, "lang": lang})
+
+
+def test_kannada_and_hindi_drafts_use_the_same_figures(client):
+    client.post(f"/api/cases/{CASE}/promises", json={
+        "made_on": "2026-10-20", "due_date": "2026-10-23", "amount": "50000"})
+    ev = evaluate(client)
+    allowed = {ev["totals"]["interest"], ev["totals"]["total"], "225000.00", "50000.00"}
+    allowed |= {i["interest"]["total_outstanding"] for i in ev["invoices"]}
+    for lang, script in (("kn", "ಀ-೿"), ("hi", "ऀ-ॿ")):
+        for kind in ("acceptance_confirm", "nudge", "firm", "demand"):
+            d = _ldraft(client, kind, lang).json()
+            assert d["lang"] == lang and d["generated_by"] == "template"
+            assert "native speaker" in d["review_note"]
+            assert re.search(f"[{script}]", d["body"]), (lang, kind)
+            assert "Rs " not in d["body"] and "{" not in d["body"]       # nothing left unfilled
+            for amt in re.findall(r"₹([\d,]+\.\d{2})", d["body"]):
+                assert amt.replace(",", "") in allowed, (lang, kind, amt)
+    firm_kn = _ldraft(client, "firm", "kn").json()["body"]
+    assert "₹2,46,072.61" in firm_kn and "09-11-2026" in firm_kn and "INV-114 ಮತ್ತು INV-131" in firm_kn
+    assert "₹50,000.00" in firm_kn and "23-10-2026" in firm_kn          # the broken promise
+    demand_hi = _ldraft(client, "demand", "hi").json()
+    assert "धारा 15 और 16" in demand_hi["body"] and "English version" in demand_hi["review_note"]
+    assert _ldraft(client, "nudge", "en").json()["review_note"] is None
+
+
+def test_other_languages_limited_to_main_letters(client):
+    evaluate(client)
+    r = _ldraft(client, "fix_blocker_grn", "kn")
+    assert r.status_code == 422 and "Use English" in r.json()["detail"]
+    assert _ldraft(client, "nudge", "fr").status_code == 422
+    assert _ldraft(client, "fix_blocker_grn", "en").status_code == 201
+
+
+def test_no_kannada_demand_when_eligibility_unsettled(client):
+    client.post("/api/businesses", json={"name": "Sri Lakshmi Packaging", "size": "micro",
+                                         "activity": "manufacturing", "udyam_registered": True,
+                                         "udyam_reg_date": "2026-03-01"})
+    evaluate(client)
+    assert _ldraft(client, "demand", "kn").status_code == 422
+    firm = _ldraft(client, "firm", "hi").json()["body"]
+    assert "MSMED" not in firm and "43B" not in firm and "₹2,25,000.00" in firm

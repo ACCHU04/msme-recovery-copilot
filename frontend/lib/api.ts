@@ -1,7 +1,7 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders, EvidenceFile, EvidenceFiles } from "@/types/api";
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders, EvidenceFile, EvidenceFiles, DraftLang } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
 
@@ -282,6 +282,6 @@ export const api = {
     request<{ deleted: string }>(`/api/cases/${caseId}/shares/${shareId}`, { method: "DELETE" }),
   getAdviserCases: () => request<AdviserCase[]>("/api/adviser/cases"),
 
-  createDraft: (caseId: string, kind: DraftKind) =>
-    request<Draft>(`/api/cases/${caseId}/drafts`, { method: "POST", body: { kind } }),
+  createDraft: (caseId: string, kind: DraftKind, lang: DraftLang = "en") =>
+    request<Draft>(`/api/cases/${caseId}/drafts`, { method: "POST", body: { kind, lang } }),
 };

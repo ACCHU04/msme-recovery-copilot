@@ -409,3 +409,16 @@ def test_evidence_files_owner_read_only(url):
             c.execute("delete from evidence_files")
     with as_user(url, other) as c:
         assert c.execute("select count(*) from evidence_files").fetchone()[0] == 0
+
+
+def test_drafts_accept_all_kinds_and_languages(url):
+    uid, case, _ = _supplier_with_case(url)
+    with as_user(url, uid) as c:
+        for kind, lang in (("fix_blocker_grn", "en"), ("resolve_dispute", "en"), ("firm", "kn"), ("demand", "hi")):
+            c.execute("insert into drafts (case_id, kind, lang, body) values (%s, %s, %s, 'x')", (case, kind, lang))
+        c.commit()
+        with pytest.raises(errors.CheckViolation):
+            c.execute("insert into drafts (case_id, kind, lang, body) values (%s, 'firm', 'fr', 'x')", (case,))
+    with as_user(url, uid) as c:
+        b = c.execute("select business_id from cases where id = %s", (case,)).fetchone()[0]
+        assert c.execute("update businesses set preferred_lang = 'hi' where id = %s", (b,)).rowcount == 1

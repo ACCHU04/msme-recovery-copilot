@@ -8,6 +8,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
+from . import drafts_i18n as i18n
+
 KINDS = ("acceptance_confirm", "nudge", "firm", "demand", "fix_blocker_po", "fix_blocker_grn", "fix_blocker_amount", "resolve_dispute", "fix_blocker")
 
 
@@ -34,10 +36,14 @@ def _d(s: str) -> str:
 
 
 def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
-                unpaid_simple: Decimal) -> dict:
-    """unpaid_simple: invoice amounts minus payments received (what the buyer sees as unpaid)."""
+                unpaid_simple: Decimal, lang: str = "en") -> dict:
+    """unpaid_simple: invoice amounts minus payments received (what the buyer sees as unpaid).
+    lang: "en", or "kn" / "hi" for the four main letters (see drafts_i18n)."""
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {', '.join(KINDS)}")
+    if lang != "en" and (lang not in i18n.LANGS or kind not in i18n.LOCALIZED_KINDS):
+        raise ValueError(f"{i18n.LANG_NAME.get(lang, lang)} is available for the confirmation, reminder and "
+                         "demand letters only. Use English for this one.")
     as_of = date.fromisoformat(outputs["as_of"])
     pay_by = (as_of + timedelta(days=15)).isoformat()
     invs = outputs["invoices"]
@@ -142,5 +148,13 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                 f"settle this directly.\n\nYours faithfully,\n{business_name}")
         caution = "Review with a professional before sending a formal demand."
 
-    return {"kind": kind, "lang": "en", "body": body, "facts_used": facts,
-            "generated_by": "template", "caution": caution}
+    review_note = None
+    if lang != "en":
+        body = i18n.render(kind, lang, buyer=buyer_name, business=business_name,
+                           invoice_numbers=[i["number"] for i in invs], unpaid=unpaid_simple, total=total,
+                           interest=interest, eligible=eligible, as_of=outputs["as_of"], pay_by=pay_by,
+                           held=held, broken_promise=broken[-1] if broken else None, invoices=invs)
+        review_note = i18n.REVIEW_NOTE[lang] + (i18n.DEMAND_NOTE[lang] if kind == "demand" else "")
+
+    return {"kind": kind, "lang": lang, "body": body, "facts_used": facts,
+            "generated_by": "template", "caution": caution, "review_note": review_note}

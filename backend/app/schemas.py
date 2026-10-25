@@ -54,7 +54,7 @@ class BusinessIn(BaseModel):
     activity: Literal["manufacturing", "services", "trader"] | None = None
     udyam_registered: bool | None = None
     udyam_reg_date: date | None = None
-    preferred_lang: Literal["en", "kn"] = "en"
+    preferred_lang: Literal["en", "kn", "hi"] = "en"
     # Profile details (shown on the Business Profile page; none affect eligibility)
     description: str | None = Field(default=None, max_length=500)
     email: str | None = Field(default=None, max_length=254)
@@ -300,7 +300,7 @@ class DraftIn(BaseModel):
         "acceptance_confirm", "nudge", "firm", "demand",
         "fix_blocker_po", "fix_blocker_grn", "fix_blocker_amount", "resolve_dispute", "fix_blocker"
     ]
-    lang: Literal["en"] = "en"
+    lang: Literal["en", "kn", "hi"] = "en"
 
 
 class EvidenceIn(BaseModel):

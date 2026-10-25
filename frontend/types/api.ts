@@ -228,12 +228,15 @@ export interface PromiseCandidate {
   extractor: string;
 }
 
+export type DraftLang = "en" | "kn" | "hi";
+
 export interface Draft {
   id: string;
   kind: DraftKind;
-  lang: string;
+  lang: DraftLang;
   body: string;
   caution: string | null;
+  review_note?: string | null;
   generated_by: string;
   calculation_id: string;
 }

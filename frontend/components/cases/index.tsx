@@ -6,7 +6,7 @@ import { Badge, Button, Card, cx, ErrorState, Field, inputClass, LoadingState, N
 import { api, ApiError } from "@/lib/api";
 import { describeSource, EVIDENCE_LABEL, EVIDENCE_WHY, formatDate, formatINR, todayISO } from "@/lib/format";
 import type {
-  CaseDetail, Draft, DraftKind, Evaluation, EvidenceItem, EvidenceKind, EvidenceStatus,
+  DraftLang, CaseDetail, Draft, DraftKind, Evaluation, EvidenceItem, EvidenceKind, EvidenceStatus,
   Finding, PromiseCandidate, SettlementOption,
 } from "@/types/api";
 
@@ -123,6 +123,10 @@ export function NextActionCard({ ev, onDraft }: { ev: Evaluation; onDraft: (k: D
 }
 
 // ---------------------------------------------------------------- draft editor
+/** C3: these four letters also come in Kannada and Hindi (fixed templates, figures filled by code). */
+const TRANSLATED_KINDS = new Set<DraftKind>(["acceptance_confirm", "nudge", "firm", "demand"]);
+const DRAFT_LANGS: [DraftLang, string][] = [["en", "English"], ["kn", "ಕನ್ನಡ"], ["hi", "हिन्दी"]];
+
 export function DraftEditor({ caseId, kind, onLogged, onClose }: {
   caseId: string; kind: DraftKind; onLogged: () => void; onClose: () => void;
 }) {
@@ -131,13 +135,16 @@ export function DraftEditor({ caseId, kind, onLogged, onClose }: {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [sentOn, setSentOn] = useState(todayISO());
+  const [lang, setLang] = useState<DraftLang>("en");
+  const canTranslate = TRANSLATED_KINDS.has(kind);
 
   useEffect(() => {
     setDraft(null);
     setError(null);
     setStatus(null);
-    api.createDraft(caseId, kind).then((d) => { setDraft(d); setText(d.body); }).catch((e) => setError(msg(e)));
-  }, [caseId, kind]);
+    api.createDraft(caseId, kind, canTranslate ? lang : "en")
+      .then((d) => { setDraft(d); setText(d.body); }).catch((e) => setError(msg(e)));
+  }, [caseId, kind, lang, canTranslate]);
 
   const copy = async () => {
     try {
@@ -162,11 +169,23 @@ export function DraftEditor({ caseId, kind, onLogged, onClose }: {
     <Card title={`Draft: ${DRAFT_LABEL[kind]}`} action={<Button variant="ghost" onClick={onClose}>Close</Button>}>
       {error && <ErrorState message={error} />}
       {!draft && !error && <LoadingState label="Preparing draft" />}
+      {canTranslate && (
+        <div role="radiogroup" aria-label="Language of the message" className="mb-3 inline-flex rounded-lg border border-slate-200 p-0.5">
+          {DRAFT_LANGS.map(([code, label]) => (
+            <button key={code} type="button" role="radio" aria-checked={lang === code} lang={code}
+              onClick={() => setLang(code)}
+              className={`rounded-md px-3 py-1 text-sm ${lang === code ? "bg-brand-600 font-medium text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {draft && (
         <div className="space-y-3">
           <label htmlFor="draft-text" className="sr-only">Draft message, editable</label>
-          <textarea id="draft-text" value={text} onChange={(e) => setText(e.target.value)} rows={10}
-            className={`${inputClass} font-mono text-[13px] leading-relaxed`} />
+          <textarea id="draft-text" value={text} onChange={(e) => setText(e.target.value)} rows={10} lang={draft.lang}
+            className={`${inputClass} ${draft.lang === "en" ? "font-mono text-[13px]" : "text-sm"} leading-relaxed`} />
+          {draft.review_note && <Notice tone="amber">{draft.review_note}</Notice>}
           {draft.caution && <Notice tone="amber">{draft.caution}</Notice>}
           <p className="text-xs text-slate-500">
             Amounts and dates were filled in from the calculation, not written by AI. Edit freely before sending.

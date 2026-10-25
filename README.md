@@ -64,7 +64,7 @@ database password somewhere safe.
 `supabase/migrations/001_init.sql`, `002_copilot.sql`, `003_auth_roles.sql`,
 `004_profile_notes_milestones.sql`, `005_buyer_links_case_shares.sql`, `006_security_hardening.sql`,
 `007_payment_blockers.sql`, `008_partial_disputes.sql`, `009_confirmation_links.sql`,
-`010_invoice_irn.sql`, `011_reminder_dismissals.sql`, `012_evidence_files.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
+`010_invoice_irn.sql`, `011_reminder_dismissals.sql`, `012_evidence_files.sql`, `013_draft_kinds_and_languages.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
 sign-up trigger, column grants and row level security (explained below).
 
 **3. Auth settings.** Dashboard → Authentication:

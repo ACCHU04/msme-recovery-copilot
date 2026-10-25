@@ -593,7 +593,7 @@ def create_draft(case_id: str, body: DraftIn, store: Store = Depends(get_store),
         unpaid += max(Decimal(str(inv["amount"])) - paid, Decimal(0))
     try:
         draft = build_draft(body.kind, calc["outputs"], business.get("name", "Your business"),
-                            buyer.get("name", "Buyer"), unpaid)
+                            buyer.get("name", "Buyer"), unpaid, body.lang)
     except ValueError as e:
         raise HTTPException(422, str(e))
     row = store.insert("drafts", {"case_id": case_id, "calculation_id": calc["id"],
