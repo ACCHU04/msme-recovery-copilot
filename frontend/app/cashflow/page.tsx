@@ -4,6 +4,7 @@
 // cases to chase first. Built from legal due dates and the buyer's own promises, not a forecast.
 import { CalendarClock, Handshake, Hourglass, TrendingUp, Wallet } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Badge, Card, EmptyState, ErrorState, KpiCard, LoadingState, Notice } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -13,6 +14,10 @@ import { useAsync } from "@/lib/useAsync";
 const lakh = (v: number) => (v >= 100000 ? `₹${(v / 100000).toFixed(v % 100000 ? 1 : 0)}L` : v >= 1000 ? `₹${Math.round(v / 1000)}k` : `₹${v}`);
 
 export default function CashFlowPage() {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const { data, error, loading, reload } = useAsync(() => api.cashFlow(), []);
   const weeks = (data?.weeks ?? []).map((w) => ({
     week: formatDate(w.week_start).replace(/ \d{4}$/, ""), "Falling due": Number(w.due), Promised: Number(w.promised),
@@ -46,7 +51,7 @@ export default function CashFlowPage() {
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-sm font-bold text-white">{i + 1}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <Link href={`/cases/${c.case_id}`} className="font-semibold text-brand-600 hover:underline">{c.buyer_name}</Link>
+                          <Link href={`/cases/${c.case_id}`} className="font-semibold text-brand-600 hover:underline">{c.buyer_name || `Case #${c.case_id.slice(0, 8)}`}</Link>
                           <span className="font-bold tabular-nums">{formatINR(c.amount)}</span>
                         </div>
                         {c.reasons.length > 0 && <p className="text-sm text-slate-600">{c.reasons.join(" · ")}</p>}
@@ -71,7 +76,8 @@ export default function CashFlowPage() {
           <Card title="Next 8 weeks">
             <figure>
               <div className="h-64" aria-hidden>
-                <ResponsiveContainer width="100%" height="100%">
+                {mounted ? (
+                  <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={weeks} margin={{ top: 8, right: 8, left: -12, bottom: 0 }} barGap={4}>
                     <CartesianGrid vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="week" tickLine={false} axisLine={false} fontSize={12} />
@@ -81,7 +87,10 @@ export default function CashFlowPage() {
                     <Bar dataKey="Falling due" fill="#60a5fa" radius={[3, 3, 0, 0]} maxBarSize={22} isAnimationActive={false} />
                     <Bar dataKey="Promised" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={22} isAnimationActive={false} />
                   </BarChart>
-                </ResponsiveContainer>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full w-full rounded bg-slate-50 animate-pulse" />
+                )}
               </div>
               <figcaption className="sr-only">{summary}</figcaption>
             </figure>

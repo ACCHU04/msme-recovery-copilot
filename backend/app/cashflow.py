@@ -48,11 +48,11 @@ def cash_flow(store: Store, business_id: str, as_of: date | None = None, weeks: 
             owed_now += owed
             interest += _m(inv.get("estimated_interest"))
             for band, (lo, hi, _) in zip(ages, AGE_BANDS):
-                if lo <= (inv.get("days_overdue") or 0) <= hi:
+                if (lo <= (inv.get("days_overdue") or 0) <= hi) or (lo == 1 and (inv.get("days_overdue") or 0) == 0):
                     band["amount"] += owed
                     band["count"] += 1
         elif inv.get("last_day_to_pay"):
-            last = date.fromisoformat(inv["last_day_to_pay"])
+            last = date.fromisoformat(str(inv["last_day_to_pay"])[:10])
             if last <= as_of + timedelta(days=30):
                 due_30 += unpaid
             if (w := week_of(last)) is not None:
@@ -69,7 +69,7 @@ def cash_flow(store: Store, business_id: str, as_of: date | None = None, weeks: 
             continue
         for p in ev.get("promises", []):
             if p.get("status") == "pending":
-                d = date.fromisoformat(str(p["due_date"]))
+                d = date.fromisoformat(str(p["due_date"])[:10])
                 amt = _m(p.get("amount"))
                 if d <= as_of + timedelta(days=30):
                     promised_30 += amt
