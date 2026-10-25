@@ -22,7 +22,7 @@ assistant" below). It never calculates amounts, dates or eligibility.
 | Simulator endpoint | Stub with final shape; chat state machine is next (P3) |
 | Auth: Supabase JWT verification, ownership from the token | Done, tested |
 | Sign-in in the frontend: register (supplier / buyer / adviser), email verification, sign in, remember me, forgot / reset password, sign out | Done; tested end to end against a stand-in auth server (`e2e/`), **not yet against a real Supabase project** |
-| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (30 tests), backend (225 tests) |
+| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (30 tests), backend (227 tests) |
 | Payment checks: running total vs amount owed, duplicate guard | Done, tested |
 | Copilot: reconciliation findings, ODR readiness, promise tracker, next-action engine | Done, tested |
 | Drafts: template-based, figures from the calculation (`POST /cases/{id}/drafts`) | Done, tested |
@@ -45,7 +45,7 @@ See `frontend/README.md` (`npm install && npm run dev`, with the backend running
 cd backend
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m pytest -q                                   # 225 tests
+python -m pytest -q                                   # 227 tests
 uvicorn app.main:app --reload                         # http://127.0.0.1:8000/docs
 ```
 
@@ -269,5 +269,41 @@ and 7 Oct 2026 (5.75%). Earlier dates return `rate_unavailable` instead of guess
 
 ## AI use disclosure
 
-To be completed by the team: LLM used and for what; which code was written with AI
-assistance (including this scaffold and the engine) and who reviewed it.
+We used AI in two separate ways: as a development assistant while building the project, and
+as a feature inside the product.
+
+### 1. AI used to build the project
+
+| Tool | What it was used for |
+|---|---|
+| Claude (Anthropic), through Claude Code | Writing most of the code with us: the FastAPI backend, the MSMED Act calculation engine (`recovery_engine`), the recovery copilot rules, the Next.js pages, Supabase migrations and row-level security, the sign-in flows, the Gemini integration, and the tests. Also used for legal research (checking sections, RBI Bank Rate dates, the ODR portal and the s.43B(h) → s.37(2)(g) change), the README, demo data and the Evaluation 1 briefing. |
+| [Other tools the team used, e.g. ChatGPT, Copilot — or delete this row] | [What for] |
+
+How we kept the AI-assisted work correct:
+- **The legal rules were checked against the Act, not taken on trust.** Each rule in the engine
+  cites its section, and the assumptions it makes (A1–A8) are listed in this README.
+- **Tests from worked examples.** The demo case is checked to the paisa
+  (₹2,46,072.61 as of 25 Oct 2026), alongside 227 backend tests, 30 database security tests,
+  41 frontend tests and 59 end-to-end sign-in checks.
+- **People reviewed it.** [Team member names] reviewed [which parts, e.g. the interest
+  calculation, the legal text, the UI flows] and ran the app end to end.
+- **What we built or changed ourselves:** [e.g. Settle45 branding, Supabase query batching,
+  extra seed scenarios, testing with the live Supabase project — the team fills this in].
+
+### 2. AI inside the product (Google Gemini)
+
+- **Legal Q&A** (typed or spoken): Gemini answers only from our reviewed knowledge base of
+  Act texts (`backend/app/legal_kb.py`). An answer is rejected, and the team's prepared answer
+  shown instead, if it cites an unknown source, mentions a section outside the knowledge base,
+  or contains any number not present in the cited text. Only the question is sent, never case
+  data.
+- **Document check**: Gemini reads an uploaded photo or PDF and must quote the exact text each
+  value came from. Values that don't appear in their quote are dropped. The comparison with
+  the user's records is done by plain code, not by the AI. Files are not stored.
+- **What AI never does in Settle45:** calculate amounts, dates or interest; decide whether a
+  supplier is eligible; or write the reminder and demand drafts. These all come from
+  deterministic, tested code and fixed templates.
+- AI answers are labelled "AI-assisted", and users can switch AI off. Without a key, the app
+  falls back to the prepared answers.
+
+All business names, people and figures in the demo data are fictional.
