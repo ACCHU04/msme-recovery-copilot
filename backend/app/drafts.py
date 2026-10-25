@@ -70,9 +70,11 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
         interest_line = (f" Under the MSMED Act, 2006, interest of {_inr(interest)} has "
                          f"accrued as of {_d(outputs['as_of'])}." if eligible and interest > 0
                          else "")
+        tax_line = (" Timely payment also protects your tax deduction under Section 43B(h) of the Income-tax Act, 1961 "
+                    "(Section 37(2)(g) of the Income-tax Act, 2025)." if eligible else "")
         amount = total if eligible else unpaid_simple
         body = (f"Hello {buyer_name} team,\n\n{numbers} are past their due dates."
-                f"{promise_line}{interest_line}\n\nPlease arrange payment of {_inr(amount)} "
+                f"{promise_line}{interest_line}{tax_line}\n\nPlease arrange payment of {_inr(amount)} "
                 f"by {_d(pay_by)}. If there is any issue with the invoices, please tell us so "
                 f"we can resolve it.\n\nRegards,\n{business_name}")
     else:  # demand

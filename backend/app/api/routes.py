@@ -532,7 +532,7 @@ def sim_message(body: SimMessageIn, store: Store = Depends(get_store),
 
 # ---------------------------------------------------------------- buyer portal
 @router.get("/buyer/invoices")
-def get_buyer_invoices(store: Store = Depends(get_store), ctx: AuthContext = Depends(buyer)):
+def get_buyer_invoices(as_of: date | None = None, store: Store = Depends(get_store), ctx: AuthContext = Depends(buyer)):
     """Invoices raised by suppliers to this buyer account with legal due dates and s.16 interest."""
     buyer_ids: set[str] = set()
     if ctx.user_id:
@@ -558,7 +558,8 @@ def get_buyer_invoices(store: Store = Depends(get_store), ctx: AuthContext = Dep
                 buyer_ids.add(b["id"])
 
     out = []
-    as_of = date.today()
+    if as_of is None:
+        as_of = date.today()
     for bid in buyer_ids:
         buyer_row = store.get("buyers", bid)
         if not buyer_row:

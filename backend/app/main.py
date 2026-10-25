@@ -1,15 +1,21 @@
 """FastAPI app. Run: uvicorn app.main:app --reload  (from backend/)"""
 from __future__ import annotations
 
+import logging
+import uuid
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.routes import router
 from .config import Settings, get_settings
 from .legal_ai import GeminiClient, RateLimiter
 from .store import MemoryStore, Store, SupabaseStore
+
+logger = logging.getLogger("settle45")
 
 
 def build_store(settings: Settings) -> Store:
@@ -37,6 +43,25 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
                    "message": e["msg"].removeprefix("Value error, ")}
                   for e in exc.errors()]
         return JSONResponse(status_code=422, content={**errors[0], "errors": errors})
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        if isinstance(exc, StarletteHTTPException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers,
+            )
+        error_id = str(uuid.uuid4())
+        logger.exception("Unhandled server exception [%s] on %s %s: %s",
+                         error_id, request.method, request.url.path, exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": f"An unexpected internal error occurred. (Ref: {error_id})",
+                "error_id": error_id,
+            },
+        )
 
     app.include_router(router)
     return app
