@@ -18,6 +18,8 @@ from typing import Any, Callable, Protocol, TypeVar
 
 import httpx
 
+from . import demo_extra as _demo_extra
+
 Row = dict[str, Any]
 T = TypeVar("T")
 
@@ -338,7 +340,10 @@ DEMO_ROWS: dict[str, list[Row]] = {
     ],
     "invoice_notes": [],
     "profiles": [],   # only used with AUTH_MODE=supabase (rows come from Supabase Auth sign-up)
+    "case_shares": [],
 }
+DEMO_ROWS["profiles"].append(_demo_extra.ADVISER_PROFILE)
+_demo_extra.extend(DEMO_ROWS)   # suppliers 2 and 3, demo adviser shares (see demo_extra.py)
 
 
 class MemoryStore:

@@ -17,9 +17,9 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import doc_check, legal_ai
+from .. import demo_extra, doc_check, legal_ai
 from ..evaluate import _jsonable
-from ..schemas import (EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
+from ..schemas import (ShareIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
                        PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn)
@@ -528,3 +528,115 @@ def sim_message(body: SimMessageIn, store: Store = Depends(get_store),
                 ctx: AuthContext = Depends(supplier)):
     owner = ctx.user_id or "demo"
     return {"replies": handle_sim_message(store, f"sim:{owner}:{body.session}", body.text)}
+
+
+# ---------------------------------------------------------------- buyer view
+BUYER_FIELDS = ("id", "number", "invoice_date", "amount", "paid", "unpaid", "delivery_date",
+                "agreed_due_date", "last_day_to_pay", "status", "days_overdue", "days_left",
+                "estimated_interest", "statutory_total")
+
+
+@router.get("/buyer/invoices")
+def buyer_invoices(request: Request, as_of: date | None = None, store: Store = Depends(get_store),
+                   ctx: AuthContext = Depends(approved_user)):
+    """Invoices raised to the signed-in buyer, from every supplier that has linked the buyer
+    record to this account. Read-only, and without the supplier's private notes or messages."""
+    if request.app.state.settings.auth_mode == "demo":
+        buyer_ids = list(demo_extra.DEMO_BUYER_ROWS)
+    else:
+        if ctx.role != "buyer":
+            raise HTTPException(403, "This needs a buyer account.")
+        buyer_ids = [b["id"] for b in store.select("buyers", account_id=ctx.user_id)]
+    rows = store.select("buyers", id=buyer_ids) if buyer_ids else []
+    out = []
+    for biz_id in sorted({r["business_id"] for r in rows}):
+        business = store.get("businesses", biz_id) or {}
+        mine = {r["id"] for r in rows if r["business_id"] == biz_id}
+        for inv in list_invoices(store, biz_id, as_of):
+            if inv["buyer_id"] in mine:
+                out.append({**{k: inv.get(k) for k in BUYER_FIELDS},
+                            "supplier_name": business.get("name"),
+                            "supplier_size": business.get("size")})
+    out.sort(key=lambda r: (r["status"] != "overdue", -(r["days_overdue"] or 0), r["invoice_date"]))
+    return {"buyer_name": rows[0]["name"] if rows else None, "invoices": out}
+
+
+# ---------------------------------------------------------------- sharing with advisers
+def _adviser_by_email(store: Store, email: str) -> dict | None:
+    for p in store.select("profiles", email=email):
+        if p.get("role") == "adviser" and p.get("approval_status") == "approved":
+            return p
+    return None
+
+
+def _share_out(store: Store, share: dict) -> dict:
+    p = store.get("profiles", share["adviser_id"]) or {}
+    return {"id": share["id"], "case_id": share["case_id"], "created_at": share.get("created_at"),
+            "adviser_name": p.get("full_name"), "adviser_email": p.get("email"),
+            "adviser_firm": p.get("business_name")}
+
+
+@router.get("/cases/{case_id}/shares")
+def list_shares(case_id: str, store: Store = Depends(get_store),
+                bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    return [_share_out(store, s) for s in store.select("case_shares", case_id=case_id)]
+
+
+@router.post("/cases/{case_id}/shares", status_code=201)
+def add_share(case_id: str, body: ShareIn, store: Store = Depends(get_store),
+              bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    adviser = _adviser_by_email(store, body.email)
+    if adviser is None:
+        raise HTTPException(404, "No approved adviser account uses that email.")
+    if any(s["adviser_id"] == adviser["id"] for s in store.select("case_shares", case_id=case_id)):
+        raise HTTPException(409, "This case is already shared with that adviser.")
+    share = store.insert("case_shares", {"case_id": case_id, "adviser_id": adviser["id"]})
+    return _share_out(store, share)
+
+
+@router.delete("/shares/{share_id}", status_code=204)
+def remove_share(share_id: str, store: Store = Depends(get_store),
+                 bid: str = Depends(current_business_id)):
+    share = store.get("case_shares", share_id)
+    if share is None:
+        raise HTTPException(404, "share not found")
+    _own_case(store, share["case_id"], bid)
+    store.delete("case_shares", share_id)
+
+
+@router.get("/adviser/cases")
+def adviser_cases(request: Request, store: Store = Depends(get_store),
+                  ctx: AuthContext = Depends(approved_user)):
+    """Cases suppliers have shared with the signed-in adviser (read-only summaries)."""
+    if request.app.state.settings.auth_mode == "demo":
+        adviser_id = demo_extra.ADVISER
+    else:
+        if ctx.role != "adviser":
+            raise HTTPException(403, "This needs an approved adviser account.")
+        adviser_id = ctx.user_id
+    out = []
+    for share in store.select("case_shares", adviser_id=adviser_id):
+        case = store.get("cases", share["case_id"])
+        if case is None:
+            continue
+        business = store.get("businesses", case["business_id"]) or {}
+        buyer = store.get("buyers", case["buyer_id"]) or {}
+        item = {"share_id": share["id"], "case_id": case["id"], "shared_on": share.get("created_at"),
+                "supplier_name": business.get("name"), "supplier_size": business.get("size"),
+                "buyer_name": buyer.get("name"), "buyer_is_cpse": buyer.get("is_cpse", False),
+                "status": case["status"], "dispute_reason": case.get("dispute_reason"),
+                "totals": None, "eligibility": None, "next_action": None, "bucket": None,
+                "invoice_count": len(store.select("invoices", case_id=case["id"])),
+                "evidence_missing": sorted(e["kind"] for e in store.select("evidence_items", case_id=case["id"])
+                                           if e["status"] != "have")}
+        try:
+            ev = evaluate_case(store, case["id"])
+            item.update(totals=ev["totals"], eligibility=ev["eligibility"]["verdict"],
+                        next_action=ev["next_action"], bucket=ev["bucket"])
+        except ValueError:
+            pass
+        out.append(item)
+    out.sort(key=lambda r: r["shared_on"] or "", reverse=True)
+    return out

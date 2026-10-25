@@ -708,3 +708,63 @@ def test_no_tax_line_when_eligibility_unsettled(client):
                                          "udyam_reg_date": "2026-03-01"})
     evaluate(client)
     assert "43B" not in draft(client, "firm").json()["body"]
+
+
+def test_paid_late_case_asks_for_the_interest(client):
+    h = {"X-Business-Id": "81000000-0000-4000-8000-000000000001"}
+    velan = next(c for c in client.get("/api/cases", headers=h).json()
+                 if c["buyer_name"] == "Velan Auto Systems Pvt Ltd")
+    assert velan["next_action"]["action"] == "claim_interest"
+    assert velan["next_action"]["draft_kind"] == "firm"
+    assert velan["totals"]["total"] == velan["totals"]["interest"] != "0.00"
+
+
+# ---------------------------------------------------------------- buyer view, sharing
+def test_demo_buyer_sees_invoices_from_both_suppliers(client):
+    r = client.get("/api/buyer/invoices?as_of=2026-10-25").json()
+    assert r["buyer_name"] == "Kaveri Foods Pvt Ltd"
+    by_no = {i["number"]: i for i in r["invoices"]}
+    assert {"INV-114", "INV-131", "TKW-118"} <= set(by_no)
+    assert by_no["INV-114"]["statutory_total"] == "144734.20"
+    assert {i["supplier_name"] for i in r["invoices"]} == {"Sri Lakshmi Packaging", "Thenmozhi Knit Works"}
+    assert "notes" not in by_no["INV-114"] and "payments" not in by_no["INV-114"]
+
+
+def test_demo_adviser_sees_shared_cases(client):
+    rows = client.get("/api/adviser/cases").json()
+    assert len(rows) == 4
+    assert {r["supplier_name"] for r in rows} >= {"Sri Lakshmi Packaging", "Arunodaya Precision Components"}
+    cpse = next(r for r in rows if r["buyer_is_cpse"])
+    assert cpse["next_action"]["action"] == "demand"
+
+
+def test_buyer_account_sees_only_linked_buyer_rows(secure_client):
+    store = secure_client.app.state.store
+    assert secure_client.get("/api/buyer/invoices", headers=bearer(token(BUYER))).json()["invoices"] == []
+    store.update("buyers", "22222222-2222-2222-2222-222222222222", {"account_id": BUYER})
+    r = secure_client.get("/api/buyer/invoices?as_of=2026-10-25", headers=bearer(token(BUYER))).json()
+    assert {i["number"] for i in r["invoices"]} == {"INV-114", "INV-131", "INV-088", "INV-094", "INV-102"}
+    assert secure_client.get("/api/buyer/invoices", headers=bearer(token(OWNER))).status_code == 403
+
+
+def test_supplier_shares_case_with_approved_adviser_only(secure_client):
+    store = secure_client.app.state.store
+    store.update("profiles", ADVISER_OK, {"email": "ok@adv.example", "full_name": "Ok Adviser"})
+    store.update("profiles", ADVISER_PENDING, {"email": "wait@adv.example"})
+    owner = bearer(token(OWNER))
+    adv = bearer(token(ADVISER_OK))
+    assert secure_client.get("/api/adviser/cases", headers=adv).json() == []
+    assert secure_client.post(f"/api/cases/{CASE}/shares", json={"email": "wait@adv.example"},
+                              headers=owner).status_code == 404
+    s = secure_client.post(f"/api/cases/{CASE}/shares", json={"email": "OK@adv.example"}, headers=owner)
+    assert s.status_code == 201 and s.json()["adviser_name"] == "Ok Adviser"
+    assert secure_client.post(f"/api/cases/{CASE}/shares", json={"email": "ok@adv.example"},
+                              headers=owner).status_code == 409
+    rows = secure_client.get("/api/adviser/cases", headers=adv).json()
+    assert [r["case_id"] for r in rows] == [CASE] and rows[0]["totals"]["total"] == "246072.61"
+    # a stranger cannot see or remove the share; the buyer cannot use the adviser list
+    assert secure_client.get(f"/api/cases/{CASE}/shares", headers=bearer(token(STRANGER))).status_code == 404
+    assert secure_client.delete(f"/api/shares/{s.json()['id']}", headers=bearer(token(STRANGER))).status_code == 404
+    assert secure_client.get("/api/adviser/cases", headers=bearer(token(BUYER))).status_code == 403
+    assert secure_client.delete(f"/api/shares/{s.json()['id']}", headers=owner).status_code == 204
+    assert secure_client.get("/api/adviser/cases", headers=adv).json() == []

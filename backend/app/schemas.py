@@ -342,3 +342,16 @@ class LegalAskIn(BaseModel):
         if len(v) < 3:
             raise ValueError("Type a question")
         return v
+
+
+class ShareIn(BaseModel):
+    """Share a case (read-only) with an approved adviser, by their account email."""
+    email: str = Field(min_length=3, max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", v):
+            raise ValueError("Enter a valid email address.")
+        return v

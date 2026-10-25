@@ -28,7 +28,7 @@ const STAGES = [
 ];
 const CURRENT: Record<string, number> = {
   close_case: 0, wait_until_due: 0, nudge: 1, confirm_receipt: 1, resolve_dispute: 2, fix_mismatch: 2,
-  complete_facts: 2, await_promise: 3, firm: 4, demand: 4, collect_evidence: 5, prepare_odr: 6, odr: 6,
+  complete_facts: 2, await_promise: 3, firm: 4, claim_interest: 4, demand: 4, collect_evidence: 5, prepare_odr: 6, odr: 6,
 };
 
 export function RecoveryJourney({ ev }: { ev: Evaluation }) {

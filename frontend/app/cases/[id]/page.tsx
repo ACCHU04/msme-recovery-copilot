@@ -1,5 +1,6 @@
 "use client";
 
+import { ShareCase } from "@/components/sharing";
 import { FileText } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -87,6 +88,7 @@ export default function CasePage() {
               <Card title="Evidence"><div className="mb-4"><ReadinessBar ev={ev} /></div>
                 <EvidenceChecklist caseId={id} evidence={c.evidence} onChange={reload} /></Card>
               <Card title="Messages sent"><FollowupLog ev={ev} onChange={reload} /></Card>
+              <Card title="Share with an adviser"><ShareCase caseId={id} /></Card>
               <Card title="Case facts"><CaseFactsForm key={`${c.po_amount}-${c.dispute_reason}-${c.allocation}`} c={c} onChange={reload} /></Card>
               <p className="text-xs text-slate-500">Values as of {formatDate(ev.as_of)} · engine {ev.engine_version} · {formatINR(ev.totals.total)} total</p>
             </div>

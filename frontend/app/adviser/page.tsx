@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, cx, EmptyState, ErrorState, inputClass, KpiCard, LoadingState } from "@/components/ui";
 import { api } from "@/lib/api";
 import { authEnabled } from "@/lib/auth/config";
+import { SharedCases } from "@/components/sharing";
 import { useViewer } from "@/lib/auth/viewer";
 import { contractRef, loadContracts, type ContractRow } from "@/lib/contracts";
 import { EVIDENCE_LABEL, formatDate, formatINR } from "@/lib/format";
@@ -232,30 +233,31 @@ function AdviserPreview() {
   );
 }
 
-/** Real adviser accounts (Supabase sign-in). Suppliers cannot share cases with advisers yet,
- *  so there is nothing to list; the page says so rather than showing someone else's data. */
+/** Cases suppliers have shared with this adviser. In demo mode the demo adviser
+ *  (Meera Raghavan) is shown, with the role preview of your own cases below it. */
 function AdviserWorkspace() {
   const viewer = useViewer();
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="flex items-center gap-3 text-3xl font-bold"><BriefcaseBusiness className="text-brand-600" aria-hidden /> Adviser portal</h1>
-        <p className="text-slate-600">Cases that MSME suppliers share with you will appear here.</p>
+        <p className="text-slate-600">{authEnabled ? `Welcome${viewer?.name ? `, ${viewer.name.split(" ")[0]}` : ""}. ` : "Demo adviser: Meera Raghavan, Chartered Accountant. "}Cases MSME suppliers have shared with you, read-only.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Shared cases" value="0" sub="None shared yet" icon={<FolderOpen size={22} />} tone="blue" />
-        <KpiCard label="Needing action" value="0" icon={<TriangleAlert size={22} />} tone="red" />
-        <KpiCard label="Account" value="Approved" sub={viewer?.name} icon={<CircleCheck size={22} />} tone="green" />
-      </div>
-      <Card title="Your cases">
-        <EmptyState title="No cases have been shared with you yet"
-          body="Case sharing between suppliers and advisers is not built yet. Once it is, a supplier will choose an adviser on their case page and it will be listed here, with only that case visible to you."
-          action={<Link href="/legal" className="font-semibold text-brand-600 hover:underline">Open the Legal Assistant</Link>} />
-      </Card>
+      <SharedCases />
+      <p className="text-xs text-slate-500">Need the law? <Link href="/legal" className="font-semibold text-brand-600 hover:underline">Open the Legal Assistant</Link></p>
     </div>
   );
 }
 
 export default function AdviserPage() {
-  return authEnabled ? <AdviserWorkspace /> : <AdviserPreview />;
+  if (authEnabled) return <AdviserWorkspace />;
+  return (
+    <div className="space-y-10">
+      <AdviserWorkspace />
+      <details className="mx-auto max-w-[1400px]">
+        <summary className="cursor-pointer font-semibold text-brand-600">Role preview: your own cases from an adviser&apos;s point of view</summary>
+        <div className="mt-4"><AdviserPreview /></div>
+      </details>
+    </div>
+  );
 }

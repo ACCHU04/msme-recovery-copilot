@@ -97,6 +97,18 @@ def recommend(
         if last and Decimal(str(inv.get("principal_outstanding", "0"))) > 0:
             overdue_days = max(overdue_days, (as_of - date.fromisoformat(last)).days)
 
+    # R3a: every invoice is paid, but late: only the s.16 interest is still owed
+    principal_left = sum((Decimal(str(i.get("principal_outstanding", "0"))) for i in invoices),
+                         Decimal("0"))
+    if principal_left <= 0 and total_outstanding > 0:
+        return NextAction(
+            "claim_interest", "Ask for the statutory interest", 2, "firm",
+            [f"Every invoice has been paid, but after its due date: interest of "
+             f"Rs {total_outstanding:,.2f} under Section 16 is still owed.",
+             "Many suppliers waive this to keep the customer. You can claim it, or use it "
+             "as a bargaining point (see the settlement options)."],
+            [], alternatives=_alternatives(2, 3), rule="R3a-interest-only")
+
     # R3: nothing overdue yet
     if overdue_days <= 0:
         nearest = min((date.fromisoformat(i["due"]["last_day_to_pay"]) for i in invoices

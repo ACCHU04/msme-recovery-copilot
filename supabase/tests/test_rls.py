@@ -34,7 +34,8 @@ def url():
     with psycopg.connect(test_url, autocommit=True) as c:
         for f in ["tests/supabase_stub.sql", "migrations/001_init.sql",
                   "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
-                  "migrations/004_profile_notes_milestones.sql", "seed.sql"]:
+                  "migrations/004_profile_notes_milestones.sql",
+                  "migrations/005_buyer_links_case_shares.sql", "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -277,3 +278,30 @@ def test_seeded_demo_milestones_match_the_po(url):
         total, po = c.execute("select sum(m.amount), max(cs.po_amount) from milestones m join cases cs on cs.id = m.case_id "
                               "where m.case_id = '33333333-3333-3333-3333-333333333333'").fetchone()
     assert total == po == 275000
+
+
+def _approve(url, uid):
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("update profiles set approval_status = 'approved' where id = %s", (uid,))
+
+
+def test_case_sharing_with_advisers(url):
+    uid, case, _ = _supplier_with_case(url)
+    adviser = signup(url, "adviser")
+    pending = signup(url, "adviser")
+    stranger = signup(url, "supplier")
+    _approve(url, adviser)
+    with as_user(url, uid) as c:   # pending advisers cannot be shared with
+        with pytest.raises(errors.InsufficientPrivilege):
+            c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, pending))
+    with as_user(url, uid) as c:
+        c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, adviser))
+        c.commit()
+    with as_user(url, adviser) as c:
+        assert c.execute("select count(*) from case_shares where case_id = %s", (case,)).fetchone()[0] == 1
+        with pytest.raises(errors.InsufficientPrivilege):   # an adviser cannot share cases
+            c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, adviser))
+    with as_user(url, stranger) as c:
+        assert c.execute("select count(*) from case_shares").fetchone()[0] == 0
+        with pytest.raises(errors.InsufficientPrivilege):
+            c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, adviser))

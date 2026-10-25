@@ -298,3 +298,22 @@ export interface DocumentCheck {
   notes: string;
   case_id: string | null;
 }
+
+export interface BuyerInvoice {
+  id: string; number: string; invoice_date: string; amount: Money; paid: Money; unpaid: Money;
+  delivery_date: string | null; agreed_due_date: string | null; last_day_to_pay: string | null;
+  status: string; days_overdue: number | null; days_left: number | null;
+  estimated_interest: Money | null; statutory_total: Money | null;
+  supplier_name: string | null; supplier_size: string | null;
+}
+export interface CaseShare {
+  id: string; case_id: string; created_at: string | null;
+  adviser_name: string | null; adviser_email: string | null; adviser_firm: string | null;
+}
+export interface SharedCase {
+  share_id: string; case_id: string; shared_on: string | null;
+  supplier_name: string | null; supplier_size: string | null;
+  buyer_name: string | null; buyer_is_cpse: boolean; status: string; dispute_reason: string | null;
+  totals: Totals | null; eligibility: string | null; next_action: NextAction | null; bucket: string | null;
+  invoice_count: number; evidence_missing: string[];
+}

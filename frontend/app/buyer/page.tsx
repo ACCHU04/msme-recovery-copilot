@@ -2,7 +2,8 @@
 
 import { BookOpenText, Calculator, Landmark, CalendarClock, FileWarning, Percent, ShoppingBag, Store } from "lucide-react";
 import Link from "next/link";
-import { Card, EmptyState, Notice } from "@/components/ui";
+import { Card, Notice } from "@/components/ui";
+import { BuyerInvoices } from "@/components/sharing";
 import { useViewer } from "@/lib/auth/viewer";
 
 const DUTIES = [
@@ -34,13 +35,12 @@ export default function BuyerDashboard() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+      <div className="grid gap-6">
         <Card title="Invoices from your suppliers">
-          <EmptyState title="Nothing linked to your account yet"
-            body="Suppliers' invoices are not linked to buyer accounts yet, so nothing can be listed here. Once linking is built, invoices raised to your business will appear here with their due dates." />
+          <BuyerInvoices />
         </Card>
         <Card title="Useful now">
-          <div className="space-y-2">
+          <div className="grid gap-2 sm:grid-cols-2">
             <Link href="/legal" className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50">
               <Calculator size={20} className="text-brand-600" aria-hidden />
               <span><span className="block font-semibold">Check an interest claim</span><span className="text-sm text-slate-600">Use the same calculator suppliers use</span></span>

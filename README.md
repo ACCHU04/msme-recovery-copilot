@@ -22,7 +22,7 @@ assistant" below). It never calculates amounts, dates or eligibility.
 | Simulator endpoint | Stub with final shape; chat state machine is next (P3) |
 | Auth: Supabase JWT verification, ownership from the token | Done, tested |
 | Sign-in in the frontend: register (supplier / buyer / adviser), email verification, sign in, remember me, forgot / reset password, sign out | Done; tested end to end against a stand-in auth server (`e2e/`), **not yet against a real Supabase project** |
-| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (30 tests), backend (227 tests) |
+| Roles: `profiles` table, sign-up trigger, column grants, RLS, adviser approval, admin dashboard; role checks in middleware, backend and database | Done; database rules tested on real Postgres (30 tests), backend (232 tests) |
 | Payment checks: running total vs amount owed, duplicate guard | Done, tested |
 | Copilot: reconciliation findings, ODR readiness, promise tracker, next-action engine | Done, tested |
 | Drafts: template-based, figures from the calculation (`POST /cases/{id}/drafts`) | Done, tested |
@@ -45,7 +45,7 @@ See `frontend/README.md` (`npm install && npm run dev`, with the backend running
 cd backend
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-python -m pytest -q                                   # 227 tests
+python -m pytest -q                                   # 232 tests
 uvicorn app.main:app --reload                         # http://127.0.0.1:8000/docs
 ```
 
@@ -267,6 +267,25 @@ and 7 Oct 2026 (5.75%). Earlier dates return `rate_unavailable` instead of guess
 - Supabase's built-in email service is for testing; real users need your own SMTP settings.
 - Adviser case sharing and buyer invoice linking are not built; those dashboards say so.
 
+## Demo data for every role
+
+All names are fictional; places, products, invoice sizes, GSTIN/Udyam formats (with valid
+check digits), the law and RBI Bank Rate dates are realistic.
+
+| Role | What they see |
+|---|---|
+| Supplier: **Sri Lakshmi Packaging** (Bengaluru, micro) | 9 cases: the main demo (INV-114/131), settled, broken promises, dispute, pending promise, not yet due, missing evidence, and a "90 days" PO capped at 45 days |
+| Supplier: **Arunodaya Precision Components** (Hosur, micro) | Paid late, so only s.16 interest is owed ("Ask for the statutory interest"); a central PSU buyer at the formal-demand stage |
+| Supplier: **Thenmozhi Knit Works** (Tiruppur, small, job-work services) | Udyam registered after the order date (eligibility "uncertain"); part of a lot rejected in writing within 15 days |
+| Buyer: **Kaveri Foods** | Invoices raised to it by two suppliers, with the legal pay-by date and interest building up |
+| Adviser: **Meera Raghavan, CA** | Four cases shared by three suppliers, with amounts, eligibility, next step and missing evidence |
+
+In demo mode (no Supabase) all of this works at once: the Buyer and Adviser pages show the
+Kaveri Foods buyer and the demo adviser. With Supabase, run migration 005 and `seed.sql`,
+register the accounts, then run the "DEMO ACCOUNTS" block at the end of `seed.sql` to link them.
+Suppliers share a case from its page ("Share with an adviser"); only approved advisers can be
+chosen, and sharing is read-only.
+
 ## AI use disclosure
 
 We used AI in two separate ways: as a development assistant while building the project, and
@@ -283,7 +302,7 @@ How we kept the AI-assisted work correct:
 - **The legal rules were checked against the Act, not taken on trust.** Each rule in the engine
   cites its section, and the assumptions it makes (A1–A8) are listed in this README.
 - **Tests from worked examples.** The demo case is checked to the paisa
-  (₹2,46,072.61 as of 25 Oct 2026), alongside 227 backend tests, 30 database security tests,
+  (₹2,46,072.61 as of 25 Oct 2026), alongside 232 backend tests, 31 database security tests,
   41 frontend tests and 59 end-to-end sign-in checks.
 - **People reviewed it.** [Team member names] reviewed [which parts, e.g. the interest
   calculation, the legal text, the UI flows] and ran the app end to end.
