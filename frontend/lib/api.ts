@@ -16,6 +16,7 @@ const TIMEOUT_MS = 15000;
 let authToken: string | null = null;
 /** Call with the Supabase session access token once login is wired (backend AUTH_MODE=supabase). */
 export function setAuthToken(token: string | null) {
+  if (token !== authToken) cache.clear();   // another account: drop cached data
   authToken = token;
 }
 
@@ -36,7 +37,34 @@ const STATUS_MESSAGES: Record<number, string> = {
   500: "Something went wrong on the server. Try again.",
 };
 
-async function request<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
+type Init = { method?: string; body?: unknown; timeoutMs?: number };
+
+// Short-lived cache for read requests. Going back to a page shows its data at once instead
+// of fetching everything again, and two parts of the screen asking for the same list at the
+// same moment (dashboard and alerts bell) share one request. Any save, delete or other
+// non-GET request clears the whole cache, so nothing stale is shown after a change.
+const CACHE_MS = 20_000;
+const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+export function clearApiCache() { cache.clear(); }
+
+async function request<T>(path: string, init: Init = {}): Promise<T> {
+  const isRead = (init.method ?? "GET") === "GET" && init.body === undefined;
+  if (!isRead) {
+    try { return await send<T>(path, init); } finally { cache.clear(); }
+  }
+  const hit = cache.get(path);
+  if (hit && Date.now() - hit.at < CACHE_MS) return structuredClone(await hit.value) as T;
+  const value = send<T>(path, init);
+  cache.set(path, { at: Date.now(), value });
+  try {
+    return structuredClone(await value) as T;
+  } catch (e) {
+    if (cache.get(path)?.value === value) cache.delete(path);   // never keep a failure
+    throw e;
+  }
+}
+
+async function send<T>(path: string, init: Init = {}): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? TIMEOUT_MS);
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -61,6 +89,7 @@ async function request<T>(path: string, init: { method?: string; body?: unknown;
     clearTimeout(timer);
   }
 
+  if (res.status === 204) return undefined as T;
   if (res.ok) return (await res.json()) as T;
   if (res.status === 401 && authEnabled && typeof window !== "undefined") {
     const next = encodeURIComponent(window.location.pathname + window.location.search);
