@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from recovery_engine.due_date import human
-from ..auth import AuthContext, adviser, approved_user, buyer, current_business_id, supplier
+from ..auth import AuthContext, adviser, approved_user, buyer, current_business_id, forget_user, supplier
 from ..evaluate import (ENGINE_VERSION, _group_by, evaluate_case, invoice_outstanding,
                         load_business_bundle, settlement_from_totals)
 from copilot import parse_promise
@@ -73,7 +73,7 @@ def get_business(store: Store = Depends(get_store), bid: str = Depends(current_b
 
 
 @router.post("/businesses")
-def upsert_business(body: BusinessIn, store: Store = Depends(get_store),
+def upsert_business(body: BusinessIn, request: Request, store: Store = Depends(get_store),
                     ctx: AuthContext = Depends(supplier)):
     if ctx.business_id and store.get("businesses", ctx.business_id):
         # Update only what was sent, so saving one section never wipes another.
@@ -82,7 +82,9 @@ def upsert_business(body: BusinessIn, store: Store = Depends(get_store),
     row = {**data, "owner_id": ctx.user_id}
     if ctx.business_id:                   # demo mode: keep the requested id
         row["id"] = ctx.business_id
-    return store.insert("businesses", row)
+    created = store.insert("businesses", row)
+    forget_user(request, ctx.user_id)     # the next request must see the new business
+    return created
 
 
 # ---------------------------------------------------------------- cases

@@ -249,8 +249,23 @@ def pg_error(e: psycopg.Error):
     return JSONResponse({"code": code, "message": str(e).split("\n")[0], "details": None, "hint": None}, status_code=status)
 
 
+def rejected_token(req: Request) -> JSONResponse | None:
+    """Like PostgREST: a bearer that looks like a user JWT but is invalid or revoked gets 401."""
+    h = req.headers.get("authorization", "")
+    if h.lower().startswith("bearer ") and h[7:].count(".") == 2 and bearer_claims(req) is None:
+        try:
+            role = jwt.decode(h[7:], options={"verify_signature": False}).get("role")
+        except jwt.PyJWTError:
+            role = "authenticated"
+        if role == "authenticated":
+            return JSONResponse({"code": "PGRST301", "message": "JWT invalid or expired"}, status_code=401)
+    return None
+
+
 @app.get("/rest/v1/{table}")
 def rest_select(table: str, req: Request):
+    if (bad := rejected_token(req)) is not None:
+        return bad
     if not IDENT.match(table):
         return JSONResponse({"message": "bad table"}, status_code=400)
     cols, where, args, order, limit = "*", [], [], "", ""

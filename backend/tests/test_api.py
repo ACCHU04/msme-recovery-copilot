@@ -1158,3 +1158,25 @@ def test_no_kannada_demand_when_eligibility_unsettled(client):
     assert _ldraft(client, "demand", "kn").status_code == 422
     firm = _ldraft(client, "firm", "hi").json()["body"]
     assert "MSMED" not in firm and "43B" not in firm and "₹2,25,000.00" in firm
+
+
+# ---------------------------------------------------------------- auth lookups cached
+def test_auth_lookup_cached_and_cleared_on_new_business(secure_client):
+    store = secure_client.app.state.store
+    calls = []
+    real_get = store.get
+
+    def counting_get(table, id):
+        if table == "profiles":
+            calls.append(id)
+        return real_get(table, id)
+    store.get = counting_get
+    h = bearer(token(OWNER))
+    for _ in range(3):
+        assert secure_client.get("/api/cases", headers=h).status_code == 200
+    assert calls.count(OWNER) == 1                      # one profile read for three requests
+    s = bearer(token(STRANGER))
+    assert secure_client.get("/api/businesses/me", headers=s).status_code == 404
+    assert secure_client.post("/api/businesses", headers=s, json={
+        "name": "New Co", "size": "micro", "activity": "manufacturing"}).status_code == 200
+    assert secure_client.get("/api/businesses/me", headers=s).json()["name"] == "New Co"

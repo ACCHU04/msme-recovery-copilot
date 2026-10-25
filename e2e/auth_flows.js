@@ -137,6 +137,9 @@ async function verify(page, email) {
 
   console.log('Expired / revoked session');
   await fetch(`${STANDIN}/__test/revoke?email=${encodeURIComponent(supplierEmail)}`, { method: 'POST' });
+  // middleware.ts keeps a proven token's viewer for 30 s (speed), so a token revoked on the
+  // server is refused once that passes. Signing out in the app clears cookies at once (below).
+  await new Promise((r) => setTimeout(r, 31000));
   await go(p, '/contracts');
   check('revoked session sends to login, says expired', path(p) === '/login?next=%2Fcontracts&expired=1', path(p));
   check('expired message shown', (await text(p)).includes('Your session expired'));
@@ -144,9 +147,12 @@ async function verify(page, email) {
   console.log('Remember me and sign out');
   await signIn(p, supplierEmail, PW, { remember: true, from: '/login?next=%2Fcontracts' });
   check('sign-in returns to the page they asked for', path(p) === '/contracts', path(p));
-  const kept = (await p.cookies()).filter((c) => c.name.startsWith('sb-'));
+  // The login session itself (sb-<ref>-auth-token, maybe split .0/.1), not the short-lived
+  // email-link code-verifier cookies left from verification.
+  const kept = (await p.cookies()).filter((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
   const days = (kept[0].expires - Date.now() / 1000) / 86400;
-  check('remember me keeps the session up to 30 days', kept.every((c) => !c.session) && days > 29 && days <= 30.01, String(days));
+  check('remember me keeps the session up to 30 days', kept.every((c) => !c.session) && days > 29 && days <= 30.01,
+    `${days} ${kept.map((c) => `${c.name}:${c.session ? 'session' : 'persistent'}`).join(' ')}`);
   await p.click('button[aria-label="Account menu"]');
   await submit(p, 'header form button[type=submit]');
   check('sign out goes to login with a message', path(p) === '/login?signed_out=1' && (await text(p)).includes("You've signed out."), path(p));
@@ -201,6 +207,7 @@ async function verify(page, email) {
   await register(ad, { type: 'supplier', name: 'Platform Admin', business: 'LS-03 Team', email: adminEmail, address: 'Bengaluru' });
   await verify(ad, adminEmail);
   sql(`update profiles set role='admin', approval_status='approved' where email='${adminEmail}'`);   // documented bootstrap step
+  await new Promise((r) => setTimeout(r, 31000));   // a role change on an active account shows within 30 s
   await go(ad, '/');
   check('admin is sent to Admin Dashboard', path(ad) === '/admin', path(ad));
   check('admin sees the pending adviser', (await text(ad)).includes('Anita Desai'));

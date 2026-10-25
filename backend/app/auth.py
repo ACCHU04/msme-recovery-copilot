@@ -15,6 +15,7 @@ AUTH_MODE=demo (default only with STORE=memory, for local work and the offline d
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -71,13 +72,41 @@ def auth_context(request: Request, authorization: str | None = Header(default=No
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(401, "Sign in to continue.")
     user_id = verify_token(authorization.split(" ", 1)[1].strip(), settings)
+    cache = _ctx_cache(request)
+    hit = cache.get(user_id)
+    if hit and hit[0] > time.monotonic():
+        return hit[1]
     profile = store.get("profiles", user_id)
     if profile is None or profile.get("role") not in ROLES:
         raise HTTPException(403, "Your account has no profile yet. Sign out and sign in again, "
                                  "or contact support.")
     owned = store.select("businesses", owner_id=user_id)
-    return AuthContext(user_id=user_id, business_id=owned[0]["id"] if owned else None,
-                       role=profile["role"], approved=profile.get("approval_status") == "approved")
+    ctx = AuthContext(user_id=user_id, business_id=owned[0]["id"] if owned else None,
+                      role=profile["role"], approved=profile.get("approval_status") == "approved")
+    if ctx.approved:                      # pending accounts are re-read, so approval shows at once
+        if len(cache) > 1000:
+            cache.clear()
+        cache[user_id] = (time.monotonic() + CTX_TTL_SECONDS, ctx)
+    return ctx
+
+
+# The token is verified on every request (locally, no network). Who the user is in the app
+# (profile and business) is kept for a short time so a page's parallel API calls do not each
+# make two more database round trips. Role or approval changes show within this time.
+CTX_TTL_SECONDS = 30
+
+
+def _ctx_cache(request: Request) -> dict:
+    cache = getattr(request.app.state, "auth_ctx_cache", None)
+    if cache is None:
+        cache = request.app.state.auth_ctx_cache = {}
+    return cache
+
+
+def forget_user(request: Request, user_id: str | None) -> None:
+    """Call after changing a user's profile or business so the next request sees it."""
+    if user_id:
+        _ctx_cache(request).pop(user_id, None)
 
 
 def approved_user(request: Request, authorization: str | None = Header(default=None),
