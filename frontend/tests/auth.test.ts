@@ -174,3 +174,10 @@ describe("public confirmation page (C4)", () => {
     expect(decide("/confirm/abc123", null, true)).toEqual({ type: "allow" });
   });
 });
+
+describe("cash flow page", () => {
+  it("is for suppliers only", () => {
+    expect(canAccess("/cashflow", "supplier")).toBe(true);
+    for (const r of ["buyer", "adviser", "admin"] as Role[]) expect(canAccess("/cashflow", r)).toBe(false);
+  });
+});

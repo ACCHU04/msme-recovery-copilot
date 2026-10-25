@@ -41,9 +41,10 @@ def invoice_status(amount: Decimal, paid: Decimal, entry: dict, as_of: date) -> 
             "days_overdue": days_overdue if unpaid > 0 else 0, "days_left": days_left}
 
 
-def list_invoices(store: Store, business_id: str, as_of: date | None = None) -> list[dict]:
+def list_invoices(store: Store, business_id: str, as_of: date | None = None,
+                  bundle: dict | None = None) -> list[dict]:
     as_of = as_of or date.today()
-    bundle = load_business_bundle(store, business_id)
+    bundle = bundle or load_business_bundle(store, business_id)
     out: list[dict] = []
     for case in bundle["cases"]:
         rows = bundle["invoices_by_case"].get(case["id"], [])

@@ -399,3 +399,12 @@ export interface ConfirmationLink {
   /** Only in the response that creates the link. */
   path?: string;
 }
+
+export interface CashFlow {
+  as_of: ISODate;
+  totals: { owed_now: Money; overdue_invoices: number; interest_so_far: Money; due_next_30_days: Money; promised_next_30_days: Money };
+  weeks: { week_start: ISODate; due: Money; promised: Money }[];
+  overdue_by_age: { label: string; amount: Money; count: number }[];
+  chase_first: { case_id: string; buyer_name: string | null; amount: Money; days_overdue: number; reasons: string[]; next_action: string | null; next_action_id: string | null }[];
+  note: string;
+}

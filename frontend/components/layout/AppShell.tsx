@@ -2,7 +2,7 @@
 
 import {
   Bell, BookOpenText, Bot, BriefcaseBusiness, Building2, ChevronDown, FileBarChart, FileSignature, FileText, FolderKanban,
-  LayoutDashboard, LifeBuoy, LogOut, Menu, Scale, Search, Settings, ShieldCheck, ShoppingBag, Store, UserRound, Users, X,
+  LayoutDashboard, LifeBuoy, LogOut, Menu, Scale, Search, Settings, ShieldCheck, ShoppingBag, Store, TrendingUp, UserRound, Users, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ const NAV = [
   { href: "/profile", label: "Business Profile", icon: Building2 },
   { href: "/contracts", label: "Contracts", icon: FileSignature },
   { href: "/invoices", label: "Invoices", icon: FileText },
+  { href: "/cashflow", label: "Cash Flow", icon: TrendingUp },
   { href: "/cases", label: "Recovery Cases", icon: FolderKanban },
   { href: "/assistant", label: "Recovery Assistant", icon: Bot },
   { href: "/legal", label: "Legal Assistant", icon: Scale },

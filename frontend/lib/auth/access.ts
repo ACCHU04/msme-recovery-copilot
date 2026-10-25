@@ -42,6 +42,7 @@ const RULES: [prefix: string, roles: Role[]][] = [
   ["/profile", ["supplier"]],
   ["/contracts", ["supplier"]],
   ["/invoices", ["supplier"]],
+  ["/cashflow", ["supplier"]],
   ["/cases", ["supplier"]],
   ["/assistant", ["supplier"]],
   ["/buyers", ["supplier"]],

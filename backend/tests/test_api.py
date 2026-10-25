@@ -857,3 +857,22 @@ def test_invalid_and_expired_links(client):
 def test_other_business_cannot_create_link(secure_client):
     r = secure_client.post(f"/api/invoices/{INV114}/confirmation-links", headers=bearer(token(STRANGER)))
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------- cash flow
+def test_cash_flow_totals_and_chase_order(client):
+    d = client.get("/api/cashflow?as_of=2026-10-25").json()
+    rows = client.get("/api/invoices?as_of=2026-10-25").json()
+    overdue = [r for r in rows if r["status"] == "overdue"]
+    assert d["totals"]["overdue_invoices"] == len(overdue)
+    assert Decimal(d["totals"]["owed_now"]) == sum(Decimal(r["statutory_total"] or r["unpaid"]) for r in overdue)
+    assert sum(Decimal(a["amount"]) for a in d["overdue_by_age"]) == Decimal(d["totals"]["owed_now"])
+    assert len(d["weeks"]) == 8 and d["weeks"][0]["week_start"] == "2026-10-19"
+    first = d["chase_first"][0]
+    assert first["buyer_name"] == "Kaveri Foods Pvt Ltd" and "214 days overdue" in first["reasons"]
+    assert all(c["next_action_id"] not in ("close_case", "wait_until_due") for c in d["chase_first"])
+    assert "not a forecast" in d["note"]
+
+
+def test_cash_flow_is_owner_only(secure_client):
+    assert secure_client.get("/api/cashflow", headers=bearer(token(BUYER))).status_code == 403

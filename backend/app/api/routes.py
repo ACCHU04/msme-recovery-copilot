@@ -17,7 +17,7 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import doc_check, legal_ai
+from .. import cashflow as cashflow_mod, doc_check, legal_ai
 from ..evaluate import _jsonable
 from ..schemas import (ConfirmationIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
@@ -900,3 +900,12 @@ def answer_confirmation(token: str, body: ConfirmationIn, store: Store = Depends
     store.insert("invoice_notes", {"invoice_id": inv["id"], "body": text[:1000],
                                    "created_at": now.isoformat()})
     return {"ok": True, "response": body.response, "within_objection_window": within}
+
+
+
+# ---------------------------------------------------------------- cash flow
+@router.get("/cashflow")
+def cash_flow(as_of: date | None = None, store: Store = Depends(get_store),
+              bid: str = Depends(current_business_id)):
+    """Owed now, due or promised in the coming weeks, and which cases to chase first."""
+    return cashflow_mod.cash_flow(store, bid, as_of)
