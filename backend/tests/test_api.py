@@ -942,3 +942,23 @@ def test_save_irn_then_invoice_shows_it_and_duplicates_are_refused(client):
 def test_credit_note_qr_is_flagged(client):
     r = client.post("/api/documents/qr", json={"text": _qr(DocTyp="CRN"), "invoice_id": INV114}).json()
     assert any(c["check"] == "Document type" and "credit note" in c["detail"] for c in r["checks"])
+
+
+# ---------------------------------------------------------------- PDF evidence pack
+def test_evidence_pack_pdf(client):
+    r = client.get(f"/api/cases/{CASE}/evidence-pack.pdf?as_of=2026-10-25")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF") and len(r.content) > 3000
+    assert 'filename="evidence-pack-Kaveri-Foods-Pvt-Ltd.pdf"' in r.headers["content-disposition"]
+    pypdf = pytest.importorskip("pypdf")
+    import io
+    text = " ".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(r.content)).pages)
+    for expected in ("Rs 2,46,072.61", "INV-114", "DRAFT FOR REVIEW", "Interest schedule", "s.43B(h)"):
+        assert expected in text, expected
+
+
+def test_evidence_pack_owner_only_and_needs_invoices(client, secure_client):
+    assert secure_client.get(f"/api/cases/{CASE}/evidence-pack.pdf",
+                             headers=bearer(token(STRANGER))).status_code == 404
+    new = client.post("/api/cases", json={"buyer": {"name": "Empty Buyer"}}).json()
+    assert client.get(f"/api/cases/{new['id']}/evidence-pack.pdf").status_code == 409

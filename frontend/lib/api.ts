@@ -138,6 +138,25 @@ async function request<T>(path: string, init: { method?: string; body?: unknown;
   return exec();
 }
 
+/** Download a file from the API (e.g. the PDF evidence pack) and save it in the browser. */
+export async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  else if (DEMO_BUSINESS_ID) headers["X-Business-Id"] = DEMO_BUSINESS_ID;
+  let res: Response;
+  try { res = await fetch(`${BASE}${path}`, { headers, cache: "no-store", signal: AbortSignal.timeout(60000) }); }
+  catch { throw new ApiError(0, STATUS_MESSAGES[0]); }
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new ApiError(res.status, typeof data?.detail === "string" ? data.detail : STATUS_MESSAGES[res.status] ?? STATUS_MESSAGES[500]);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 export const api = {
   health: () => request<{ ok: boolean; store: string; engine_version: string }>("/api/health"),
 

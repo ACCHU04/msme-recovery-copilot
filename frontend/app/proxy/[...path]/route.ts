@@ -48,10 +48,11 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
       cache: "no-store",
       signal: AbortSignal.timeout(req.nextUrl.pathname.includes("/documents/") ? 60000 : 30000),
     });
-    return new NextResponse(await r.text(), {
-      status: r.status,
-      headers: { "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" },
-    });
+    // Bytes, not text: responses can be files (the PDF evidence pack).
+    const out: Record<string, string> = { "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" };
+    const disposition = r.headers.get("content-disposition");
+    if (disposition) out["Content-Disposition"] = disposition;
+    return new NextResponse(r.status === 204 ? null : await r.arrayBuffer(), { status: r.status, headers: out });
   } catch {
     return json(502, "Can't reach the server. Check that the backend is running.");
   }

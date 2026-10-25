@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText } from "lucide-react";
+import { FileDown, FileText } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
@@ -9,7 +9,7 @@ import {
   BlockersCard, NextActionCard, PromisesPanel, ReadinessBar, SettlementCard, ShareWithAdviserCard,
 } from "@/components/cases";
 import { BucketBadge, Card, ErrorState, EstimateNote, inputClass, LoadingState, VerdictBadge } from "@/components/ui";
-import { api } from "@/lib/api";
+import { api, ApiError, downloadFile } from "@/lib/api";
 import { formatDate, formatINR, todayISO, totalsConsistent } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
 import type { DraftKind } from "@/types/api";
@@ -49,6 +49,7 @@ export default function CasePage() {
             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm font-medium hover:bg-slate-50">
             <FileText size={16} aria-hidden /> Report
           </Link>
+          <PackButton caseId={id} asOf={asOf} />
         </div>
       </div>
 
@@ -96,6 +97,27 @@ export default function CasePage() {
           <EstimateNote />
         </>
       )}
+    </div>
+  );
+}
+
+/** Server-made PDF with figures, schedules, evidence and history: for an adviser or the Council. */
+function PackButton({ caseId, asOf }: { caseId: string; asOf: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const go = async () => {
+    setBusy(true); setError(null);
+    try { await downloadFile(`/api/cases/${caseId}/evidence-pack.pdf?as_of=${asOf}`, "evidence-pack.pdf"); }
+    catch (e) { setError(e instanceof ApiError ? e.message : "Couldn't make the PDF."); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="flex flex-col">
+      <button type="button" onClick={go} disabled={busy}
+        className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+        <FileDown size={16} aria-hidden /> {busy ? "Preparing PDF…" : "Evidence pack (PDF)"}
+      </button>
+      {error && <span role="alert" className="mt-1 text-xs text-red-700">{error}</span>}
     </div>
   );
 }

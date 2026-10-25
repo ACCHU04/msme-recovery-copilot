@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 
 from recovery_engine.due_date import human
 from ..auth import AuthContext, adviser, approved_user, buyer, current_business_id, supplier
@@ -17,7 +17,7 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, legal_ai
+from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, legal_ai
 from ..evaluate import _jsonable
 from ..schemas import (ConfirmationIn, QRCheckIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
@@ -937,3 +937,32 @@ def check_einvoice_qr(body: QRCheckIn, store: Store = Depends(get_store),
                                   "detail": f"This IRN is already saved on invoice {other[0]['number']}."})
             out["verdict"] = "check_this"
     return out
+
+
+
+# ---------------------------------------------------------------- evidence pack (PDF)
+@router.get("/cases/{case_id}/evidence-pack.pdf")
+def evidence_pack_pdf(case_id: str, as_of: date | None = None, store: Store = Depends(get_store),
+                      bid: str = Depends(current_business_id)):
+    """One PDF with the case's figures, schedules, evidence and history (draft for review)."""
+    case = get_case(case_id, store, bid)
+    try:
+        ev = evaluate_case(store, case_id, as_of or date.today())
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    inv_ids = [i["id"] for i in case["invoices"]]
+    notes: dict[str, list] = {}
+    for inv in case["invoices"]:
+        rows = store.select("invoice_notes", invoice_id=inv["id"])
+        if rows:
+            notes[inv["number"]] = rows
+    pdf = evidence_pack.build_pack(
+        case, store.get("businesses", bid) or {}, case.get("buyer") or {}, ev,
+        promises=ev.get("promises") or [],
+        followups=sorted(store.select("followups", case_id=case_id), key=lambda f: str(f.get("sent_on"))),
+        blockers=sorted(store.select("payment_blockers", case_id=case_id), key=lambda b: str(b.get("reported_on"))),
+        notes=notes,
+        confirmations=[c for c in store.select("confirmation_links", invoice_id=inv_ids)] if inv_ids else [])
+    name = "".join(ch if ch.isalnum() else "-" for ch in (case.get("buyer") or {}).get("name", "case"))[:40]
+    return Response(pdf, media_type="application/pdf", headers={
+        "Content-Disposition": f'attachment; filename="evidence-pack-{name}.pdf"', "Cache-Control": "no-store"})
