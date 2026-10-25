@@ -34,7 +34,8 @@ def url():
     with psycopg.connect(test_url, autocommit=True) as c:
         for f in ["tests/supabase_stub.sql", "migrations/001_init.sql",
                   "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
-                  "migrations/004_profile_notes_milestones.sql", "seed.sql"]:
+                  "migrations/004_profile_notes_milestones.sql",
+                  "migrations/005_buyer_links_case_shares.sql", "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -277,3 +278,34 @@ def test_seeded_demo_milestones_match_the_po(url):
         total, po = c.execute("select sum(m.amount), max(cs.po_amount) from milestones m join cases cs on cs.id = m.case_id "
                               "where m.case_id = '33333333-3333-3333-3333-333333333333'").fetchone()
     assert total == po == 275000
+
+
+def test_case_sharing_rules(url):
+    uid, case, inv = _supplier_with_case(url)
+    admin_id = signup(url, "admin")
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("update profiles set role = 'admin', approval_status = 'approved' where id = %s", (admin_id,))
+    adv_id = signup(url, "adviser")
+    with as_user(url, admin_id) as c:
+        c.execute("select review_adviser(%s, 'approved', 'looks good')", (adv_id,))
+        c.commit()
+
+    # Supplier shares the case with the approved adviser
+    with as_user(url, uid) as c:
+        c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, adv_id))
+        c.commit()
+
+    # Adviser can read the shared case and invoices
+    with as_user(url, adv_id) as c:
+        assert c.execute("select count(*) from case_shares where case_id = %s", (case,)).fetchone()[0] == 1
+        assert c.execute("select count(*) from cases where id = %s", (case,)).fetchone()[0] == 1
+        assert c.execute("select count(*) from invoices where case_id = %s", (case,)).fetchone()[0] == 1
+
+    # Unshared adviser cannot read the case
+    other_adv = signup(url, "adviser")
+    with as_user(url, admin_id) as c:
+        c.execute("select review_adviser(%s, 'approved', 'looks good')", (other_adv,))
+        c.commit()
+    with as_user(url, other_adv) as c:
+        assert c.execute("select count(*) from cases where id = %s", (case,)).fetchone()[0] == 0
+

@@ -200,3 +200,11 @@ def test_not_yet_due_and_nothing_owed():
 def test_reply_received_holds_level():
     a = rec(followups=[Followup(2, date(2026, 10, 10), reply_received=True)])
     assert a.action == "firm"
+
+
+def test_paid_late_interest_only_claim_interest():
+    inv = [{**EVAL_INV[0], "principal_outstanding": "0.00", "due": {"last_day_to_pay": "2026-06-01"}}]
+    a = rec(invoices=inv, total_outstanding=D("12500.00"))
+    assert a.action == "claim_interest"
+    assert a.rule == "R3-interest-only"
+    assert "Ask for the statutory interest" in a.label

@@ -58,12 +58,37 @@ DEMO_ROWS: dict[str, list[Row]] = {
                  {"name": "Priya Nair", "role": "Accounts", "email": "priya@srilakshmi.example"}],
         "documents": {"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have",
                       "address_proof": "missing", "bank_details": "unknown"},
+    }, {
+        "id": "81000000-0000-4000-8000-000000000001", "owner_id": None,
+        "phone": "+910000000002", "name": "Arunodaya Precision Components",
+        "udyam_no": "UDYAM-TN-11-0028471", "size": "micro", "activity": "manufacturing",
+        "udyam_registered": True, "udyam_reg_date": "2022-08-10", "preferred_lang": "en",
+        "description": "CNC turned pins, hardened bushes and machined automotive fasteners.",
+        "email": "sales@arunodaya.example", "address": "Phase II, SIPCOT Industrial Complex, Hosur, Tamil Nadu 635126",
+        "website": None, "gstin": "33AABCA8214M1Z5", "pan": "AABCA8214M", "established_year": 2018,
+        "products": ["CNC turned pins", "Hardened bushes", "Automotive fasteners"],
+        "team": [{"name": "K. Senthil Nathan", "role": "Managing Partner", "email": "senthil@arunodaya.example"}],
+        "documents": {"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have",
+                      "address_proof": "have", "bank_details": "have"},
+    }, {
+        "id": "91000000-0000-4000-8000-000000000001", "owner_id": None,
+        "phone": "+910000000003", "name": "Thenmozhi Knit Works",
+        "udyam_no": "UDYAM-TN-27-0091384", "size": "small", "activity": "services",
+        "udyam_registered": True, "udyam_reg_date": "2026-06-15", "preferred_lang": "ta",
+        "description": "Knitted garment job work, dyeing and custom fabric finishing.",
+        "email": "accounts@thenmozhi.example", "address": "Avinashi Road, Anupparpalayam, Tiruppur, Tamil Nadu 641652",
+        "website": None, "gstin": "33AAACT9182P1ZB", "pan": "AAACT9182P", "established_year": 2020,
+        "products": ["Knitted cotton wear", "Single jersey job work", "Fabric bleaching"],
+        "team": [{"name": "T. Murugesan", "role": "Proprietor", "email": "murugesan@thenmozhi.example"}],
+        "documents": {"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have",
+                      "address_proof": "have", "bank_details": "unknown"},
     }],
     "buyers": [
         {
             "id": "22222222-2222-2222-2222-222222222222",
             "business_id": "11111111-1111-1111-1111-111111111111",
-            "name": "Kaveri Foods Pvt Ltd", "gstin": None, "is_cpse": False,
+            "profile_id": "22222222-2222-2222-2222-222222222221",
+            "name": "Kaveri Foods Pvt Ltd", "gstin": "29AABCK3419Q1ZP", "is_cpse": False,
             "relationship_importance": "high",
         },
         {
@@ -94,6 +119,31 @@ DEMO_ROWS: dict[str, list[Row]] = {
             "id": "75000000-0000-4000-8000-000000000002",
             "business_id": "11111111-1111-1111-1111-111111111111",
             "name": "Apex Pumps and Motors Ltd", "gstin": "29AAACA6521K1ZN",
+            "is_cpse": False, "relationship_importance": "medium",
+        },
+        {
+            "id": "81000000-0000-4000-8000-000000000002",
+            "business_id": "81000000-0000-4000-8000-000000000001",
+            "profile_id": "22222222-2222-2222-2222-222222222221",
+            "name": "Kaveri Foods Pvt Ltd", "gstin": "29AABCK3419Q1ZP",
+            "is_cpse": False, "relationship_importance": "medium",
+        },
+        {
+            "id": "82000000-0000-4000-8000-000000000002",
+            "business_id": "81000000-0000-4000-8000-000000000001",
+            "name": "Bharat Heavy Electricals Auxiliaries Ltd", "gstin": "33AAACB0001M1Z1",
+            "is_cpse": True, "relationship_importance": "high",
+        },
+        {
+            "id": "91000000-0000-4000-8000-000000000002",
+            "business_id": "91000000-0000-4000-8000-000000000001",
+            "name": "Maruthi Apparels Export House", "gstin": "33AABCM4591H1ZT",
+            "is_cpse": False, "relationship_importance": "high",
+        },
+        {
+            "id": "92000000-0000-4000-8000-000000000002",
+            "business_id": "91000000-0000-4000-8000-000000000001",
+            "name": "Silver Thread Retailers Ltd", "gstin": "33AAACS1289N1ZA",
             "is_cpse": False, "relationship_importance": "medium",
         },
     ],
@@ -154,6 +204,34 @@ DEMO_ROWS: dict[str, list[Row]] = {
             "contract_date": "2026-09-25", "status": "active", "ladder_step": 0,
             "allocation": "interest_first", "po_amount": "240000.00", "dispute_reason": "none",
         },
+        {
+            "id": "81000000-0000-4000-8000-000000000003",
+            "business_id": "81000000-0000-4000-8000-000000000001",
+            "buyer_id": "81000000-0000-4000-8000-000000000002",
+            "contract_date": "2026-03-15", "status": "active", "ladder_step": 0,
+            "allocation": "principal_first", "po_amount": "150000.00", "dispute_reason": "none",
+        },
+        {
+            "id": "82000000-0000-4000-8000-000000000003",
+            "business_id": "81000000-0000-4000-8000-000000000001",
+            "buyer_id": "82000000-0000-4000-8000-000000000002",
+            "contract_date": "2026-02-01", "status": "active", "ladder_step": 3,
+            "allocation": "interest_first", "po_amount": "350000.00", "dispute_reason": "none",
+        },
+        {
+            "id": "91000000-0000-4000-8000-000000000003",
+            "business_id": "91000000-0000-4000-8000-000000000001",
+            "buyer_id": "91000000-0000-4000-8000-000000000002",
+            "contract_date": "2026-04-10", "status": "active", "ladder_step": 0,
+            "allocation": "interest_first", "po_amount": "85000.00", "dispute_reason": "none",
+        },
+        {
+            "id": "92000000-0000-4000-8000-000000000003",
+            "business_id": "91000000-0000-4000-8000-000000000001",
+            "buyer_id": "92000000-0000-4000-8000-000000000002",
+            "contract_date": "2026-05-15", "status": "active", "ladder_step": 1,
+            "allocation": "interest_first", "po_amount": "110000.00", "dispute_reason": "quality",
+        },
     ],
     "invoices": [
         {"id": "44444444-4444-4444-4444-444444444441",
@@ -204,6 +282,22 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "case_id": "77000000-0000-4000-8000-000000000003", "number": "INV-204",
          "invoice_date": "2026-10-12", "amount": "90000.00", "delivery_date": "2026-10-13",
          "agreed_due_date": "2026-11-12", "objection_date": None, "objection_removed_date": None},
+        {"id": "81000000-0000-4000-8000-000000000004",
+         "case_id": "81000000-0000-4000-8000-000000000003", "number": "INV-APC-041",
+         "invoice_date": "2026-03-20", "amount": "150000.00", "delivery_date": "2026-03-20",
+         "agreed_due_date": "2026-04-04", "objection_date": None, "objection_removed_date": None},
+        {"id": "82000000-0000-4000-8000-000000000004",
+         "case_id": "82000000-0000-4000-8000-000000000003", "number": "INV-APC-058",
+         "invoice_date": "2026-02-13", "amount": "303282.94", "delivery_date": "2026-02-13",
+         "agreed_due_date": None, "objection_date": None, "objection_removed_date": None},
+        {"id": "91000000-0000-4000-8000-000000000004",
+         "case_id": "91000000-0000-4000-8000-000000000003", "number": "INV-TKW-012",
+         "invoice_date": "2026-04-15", "amount": "85000.00", "delivery_date": "2026-04-18",
+         "agreed_due_date": "2026-05-18", "objection_date": None, "objection_removed_date": None},
+        {"id": "92000000-0000-4000-8000-000000000004",
+         "case_id": "92000000-0000-4000-8000-000000000003", "number": "INV-TKW-025",
+         "invoice_date": "2026-05-20", "amount": "110000.00", "delivery_date": "2026-05-22",
+         "agreed_due_date": None, "objection_date": "2026-05-28", "objection_removed_date": None},
     ],
     "payments": [
         {"id": "55555555-5555-5555-5555-555555555551",
@@ -224,6 +318,9 @@ DEMO_ROWS: dict[str, list[Row]] = {
         {"id": "76000000-0000-4000-8000-000000000009",
          "invoice_id": "76000000-0000-4000-8000-000000000006",
          "paid_on": "2026-03-05", "amount": "70253.15"},
+        {"id": "81000000-0000-4000-8000-000000000005",
+         "invoice_id": "81000000-0000-4000-8000-000000000004",
+         "paid_on": "2026-05-20", "amount": "150000.00"},
     ],
     "evidence_items": [
         {"id": f"66666666-6666-6666-6666-66666666666{i}",
@@ -249,7 +346,15 @@ DEMO_ROWS: dict[str, list[Row]] = {
       + _ev_rows("76000000-0000-4000-8000-00000000001",
                  "76000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
       + _ev_rows("77000000-0000-4000-8000-00000000001",
-                 "77000000-0000-4000-8000-000000000003", _ALL_EVIDENCE),
+                 "77000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
+      + _ev_rows("81000000-0000-4000-8000-00000000001",
+                 "81000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
+      + _ev_rows("82000000-0000-4000-8000-00000000001",
+                 "82000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
+      + _ev_rows("91000000-0000-4000-8000-00000000001",
+                 "91000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
+      + _ev_rows("92000000-0000-4000-8000-00000000001",
+                 "92000000-0000-4000-8000-000000000003", _ALL_EVIDENCE),
     "calculations": [], "drafts": [], "conversations": [], "inbound_messages": [],
     "promises": [
         {"id": "73000000-0000-4000-8000-000000000006",
@@ -286,6 +391,22 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "case_id": "75000000-0000-4000-8000-000000000003",
          "step": 1, "sent_on": "2026-10-21", "reply_received": True,
          "note": "Gentle reminder sent; accounts team confirmed NEFT scheduled for 28 Oct."},
+        {"id": "82000000-0000-4000-8000-000000000007",
+         "case_id": "82000000-0000-4000-8000-000000000003",
+         "step": 1, "sent_on": "2026-06-15", "reply_received": True,
+         "note": "Accounts officer acknowledged PO terms; requested sanction approval from finance directorate."},
+        {"id": "82000000-0000-4000-8000-000000000008",
+         "case_id": "82000000-0000-4000-8000-000000000003",
+         "step": 2, "sent_on": "2026-07-20", "reply_received": True,
+         "note": "Second reminder sent; finance division stated CPSE bill clearance batch delayed."},
+        {"id": "82000000-0000-4000-8000-000000000009",
+         "case_id": "82000000-0000-4000-8000-000000000003",
+         "step": 3, "sent_on": "2026-09-01", "reply_received": False,
+         "note": "Formal demand letter under MSMED Act s.16 served to General Manager (Finance); no reply within 15 days."},
+        {"id": "92000000-0000-4000-8000-000000000007",
+         "case_id": "92000000-0000-4000-8000-000000000003",
+         "step": 1, "sent_on": "2026-06-05", "reply_received": True,
+         "note": "Buyer sent debit note alleging 20% shrinkage on batch; joint fabric inspection offered."},
     ],
     # Planned deliveries of the demo PO: together they make up the ₹2,75,000 order.
     "milestones": [
@@ -297,7 +418,51 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "invoice_id": "44444444-4444-4444-4444-444444444442", "created_at": "2026-02-20T10:00:00+00:00"},
     ],
     "invoice_notes": [],
-    "profiles": [],   # only used with AUTH_MODE=supabase (rows come from Supabase Auth sign-up)
+    "profiles": [
+        {
+            "id": "88888888-8888-8888-8888-888888888888",
+            "full_name": "Meera Raghavan, CA",
+            "email": "adviser@example.com",
+            "role": "adviser",
+            "approval_status": "approved",
+            "professional_role": "Chartered Accountant",
+            "qualifications": "FCA, DISA (ICAI) · MSME Advisory",
+        },
+        {
+            "id": "22222222-2222-2222-2222-222222222221",
+            "full_name": "Kaveri Accounts Desk",
+            "email": "buyer@example.com",
+            "role": "buyer",
+            "approval_status": "approved",
+            "business_name": "Kaveri Foods & Beverages Pvt Ltd",
+        },
+    ],
+    "case_shares": [
+        {
+            "id": "88880001-0000-4000-8000-000000000001",
+            "case_id": "33333333-3333-3333-3333-333333333333",
+            "adviser_id": "88888888-8888-8888-8888-888888888888",
+            "created_at": "2026-10-10T09:00:00+00:00",
+        },
+        {
+            "id": "88880002-0000-4000-8000-000000000001",
+            "case_id": "73000000-0000-4000-8000-000000000003",
+            "adviser_id": "88888888-8888-8888-8888-888888888888",
+            "created_at": "2026-10-12T11:30:00+00:00",
+        },
+        {
+            "id": "88880003-0000-4000-8000-000000000001",
+            "case_id": "82000000-0000-4000-8000-000000000003",
+            "adviser_id": "88888888-8888-8888-8888-888888888888",
+            "created_at": "2026-10-15T14:15:00+00:00",
+        },
+        {
+            "id": "88880004-0000-4000-8000-000000000001",
+            "case_id": "91000000-0000-4000-8000-000000000003",
+            "adviser_id": "88888888-8888-8888-8888-888888888888",
+            "created_at": "2026-10-18T16:45:00+00:00",
+        },
+    ],
 }
 
 
@@ -319,7 +484,7 @@ class MemoryStore:
     def insert(self, table: str, row: Row) -> Row:
         row = {"id": str(uuid.uuid4()), **row}
         if table in ("calculations", "drafts", "cases", "businesses", "promises", "followups",
-                     "milestones", "invoice_notes"):
+                     "milestones", "invoice_notes", "case_shares"):
             now = time.time()
             if now <= self._last_ts:
                 now = self._last_ts + 0.001

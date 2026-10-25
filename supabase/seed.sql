@@ -391,13 +391,183 @@ on conflict (case_id, kind) do update set
   status = excluded.status;
 
 -- -----------------------------------------------------------------------------
--- MANUAL ACCOUNT LINKING (do not automate; run in Supabase SQL Editor only for
--- your explicit test supplier account after registering and verifying email):
+-- Multi-Role Demo Scenarios: Additional Suppliers, Buyer Links, and Adviser Portal
+-- -----------------------------------------------------------------------------
+
+-- Profiles for demo adviser and buyer
+insert into profiles (id, role, approval_status, full_name, email, professional_role, qualifications, business_name)
+values
+  ('88888888-8888-8888-8888-888888888888', 'adviser', 'approved', 'Meera Raghavan, CA',
+   'adviser@example.com', 'Chartered Accountant', 'FCA, DISA (ICAI) · MSME Advisory', null),
+  ('22222222-2222-2222-2222-222222222221', 'buyer', 'approved', 'Kaveri Accounts Desk',
+   'buyer@example.com', null, null, 'Kaveri Foods & Beverages Pvt Ltd')
+on conflict (id) do update set
+  role = excluded.role, approval_status = excluded.approval_status,
+  full_name = excluded.full_name, email = excluded.email,
+  professional_role = excluded.professional_role, qualifications = excluded.qualifications,
+  business_name = excluded.business_name;
+
+-- Link Kaveri Foods buyer records to the buyer profile
+update buyers
+   set profile_id = '22222222-2222-2222-2222-222222222221',
+       gstin = '29AABCK3419Q1ZP'
+ where id = '22222222-2222-2222-2222-222222222222';
+
+-- Supplier 2: Arunodaya Precision Components (Hosur, TN — Micro Manufacturing)
+insert into businesses (id, name, phone, udyam_no, size, activity, udyam_registered, udyam_reg_date,
+                        description, email, address, gstin, pan, established_year, products, team, documents)
+values ('81000000-0000-4000-8000-000000000001', 'Arunodaya Precision Components', '+910000000002',
+        'UDYAM-TN-11-0028471', 'micro', 'manufacturing', true, '2022-08-10',
+        'CNC turned pins, hardened bushes and machined automotive fasteners.',
+        'sales@arunodaya.example', 'Phase II, SIPCOT Industrial Complex, Hosur, Tamil Nadu 635126',
+        '33AABCA8214M1Z5', 'AABCA8214M', 2018,
+        '["CNC turned pins", "Hardened bushes", "Automotive fasteners"]',
+        '[{"name": "K. Senthil Nathan", "role": "Managing Partner", "email": "senthil@arunodaya.example"}]',
+        '{"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have", "address_proof": "have", "bank_details": "have"}')
+on conflict (id) do update set
+  name = excluded.name, description = excluded.description;
+
+-- Supplier 3: Thenmozhi Knit Works (Tiruppur, TN — Small Services)
+insert into businesses (id, name, phone, udyam_no, size, activity, udyam_registered, udyam_reg_date,
+                        description, email, address, gstin, pan, established_year, products, team, documents)
+values ('91000000-0000-4000-8000-000000000001', 'Thenmozhi Knit Works', '+910000000003',
+        'UDYAM-TN-27-0091384', 'small', 'services', true, '2026-06-15',
+        'Knitted garment job work, dyeing and custom fabric finishing.',
+        'accounts@thenmozhi.example', 'Avinashi Road, Anupparpalayam, Tiruppur, Tamil Nadu 641652',
+        '33AAACT9182P1ZB', 'AAACT9182P', 2020,
+        '["Knitted cotton wear", "Single jersey job work", "Fabric bleaching"]',
+        '[{"name": "T. Murugesan", "role": "Proprietor", "email": "murugesan@thenmozhi.example"}]',
+        '{"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have", "address_proof": "have", "bank_details": "unknown"}')
+on conflict (id) do update set
+  name = excluded.name, description = excluded.description;
+
+-- Buyers for Arunodaya and Thenmozhi
+insert into buyers (id, business_id, profile_id, name, gstin, is_cpse, relationship_importance) values
+  ('81000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', '22222222-2222-2222-2222-222222222221',
+   'Kaveri Foods Pvt Ltd', '29AABCK3419Q1ZP', false, 'medium'),
+  ('82000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', null,
+   'Bharat Heavy Electricals Auxiliaries Ltd', '33AAACB0001M1Z1', true, 'high'),
+  ('91000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000001', null,
+   'Maruthi Apparels Export House', '33AABCM4591H1ZT', false, 'high'),
+  ('92000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000001', null,
+   'Silver Thread Retailers Ltd', '33AAACS1289N1ZA', false, 'medium')
+on conflict (id) do update set
+  name = excluded.name, profile_id = excluded.profile_id;
+
+-- Cases
+insert into cases (id, business_id, buyer_id, contract_date, status, ladder_step, allocation, po_amount, dispute_reason) values
+  ('81000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000001', '81000000-0000-4000-8000-000000000002',
+   '2026-03-15', 'active', 0, 'principal_first', 150000.00, 'none'),
+  ('82000000-0000-4000-8000-000000000003', '81000000-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000002',
+   '2026-02-01', 'active', 3, 'interest_first', 350000.00, 'none'),
+  ('91000000-0000-4000-8000-000000000003', '91000000-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000002',
+   '2026-04-10', 'active', 0, 'interest_first', 85000.00, 'none'),
+  ('92000000-0000-4000-8000-000000000003', '91000000-0000-4000-8000-000000000001', '92000000-0000-4000-8000-000000000002',
+   '2026-05-15', 'active', 1, 'interest_first', 110000.00, 'quality')
+on conflict (id) do update set
+  status = excluded.status, po_amount = excluded.po_amount;
+
+-- Invoices
+insert into invoices (id, case_id, number, invoice_date, amount, delivery_date, agreed_due_date, objection_date, objection_removed_date) values
+  ('81000000-0000-4000-8000-000000000004', '81000000-0000-4000-8000-000000000003',
+   'INV-APC-041', '2026-03-20', 150000.00, '2026-03-20', '2026-04-04', null, null),
+  ('82000000-0000-4000-8000-000000000004', '82000000-0000-4000-8000-000000000003',
+   'INV-APC-058', '2026-02-13', 303282.94, '2026-02-13', null, null, null),
+  ('91000000-0000-4000-8000-000000000004', '91000000-0000-4000-8000-000000000003',
+   'INV-TKW-012', '2026-04-15', 85000.00, '2026-04-18', '2026-05-18', null, null),
+  ('92000000-0000-4000-8000-000000000004', '92000000-0000-4000-8000-000000000003',
+   'INV-TKW-025', '2026-05-20', 110000.00, '2026-05-22', null, '2026-05-28', null)
+on conflict (id) do update set
+  number = excluded.number, amount = excluded.amount;
+
+-- Payments
+insert into payments (id, invoice_id, paid_on, amount) values
+  ('81000000-0000-4000-8000-000000000005', '81000000-0000-4000-8000-000000000004', '2026-05-20', 150000.00)
+on conflict (id) do update set
+  amount = excluded.amount;
+
+-- Evidence items
+insert into evidence_items (case_id, kind, status) values
+  ('81000000-0000-4000-8000-000000000003', 'po', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'invoice', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'delivery_proof', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'acceptance_reply', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'ledger', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'communications', 'have'),
+  ('81000000-0000-4000-8000-000000000003', 'udyam_cert', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'po', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'invoice', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'delivery_proof', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'acceptance_reply', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'ledger', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'communications', 'have'),
+  ('82000000-0000-4000-8000-000000000003', 'udyam_cert', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'po', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'invoice', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'delivery_proof', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'acceptance_reply', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'ledger', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'communications', 'have'),
+  ('91000000-0000-4000-8000-000000000003', 'udyam_cert', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'po', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'invoice', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'delivery_proof', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'acceptance_reply', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'ledger', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'communications', 'have'),
+  ('92000000-0000-4000-8000-000000000003', 'udyam_cert', 'have')
+on conflict (case_id, kind) do update set
+  status = excluded.status;
+
+-- Followups
+insert into followups (id, case_id, step, sent_on, reply_received, note) values
+  ('82000000-0000-4000-8000-000000000007', '82000000-0000-4000-8000-000000000003',
+   1, '2026-06-15', true, 'Accounts officer acknowledged PO terms; requested sanction approval from finance directorate.'),
+  ('82000000-0000-4000-8000-000000000008', '82000000-0000-4000-8000-000000000003',
+   2, '2026-07-20', true, 'Second reminder sent; finance division stated CPSE bill clearance batch delayed.'),
+  ('82000000-0000-4000-8000-000000000009', '82000000-0000-4000-8000-000000000003',
+   3, '2026-09-01', false, 'Formal demand letter under MSMED Act s.16 served to General Manager (Finance); no reply within 15 days.'),
+  ('92000000-0000-4000-8000-000000000007', '92000000-0000-4000-8000-000000000003',
+   1, '2026-06-05', true, 'Buyer sent debit note alleging 20% shrinkage on batch; joint fabric inspection offered.')
+on conflict (id) do update set
+  step = excluded.step, note = excluded.note;
+
+-- Case shares for adviser Meera Raghavan
+insert into case_shares (id, case_id, adviser_id, created_at) values
+  ('88880001-0000-4000-8000-000000000001', '33333333-3333-3333-3333-333333333333', '88888888-8888-8888-8888-888888888888', '2026-10-10 09:00:00+00'),
+  ('88880002-0000-4000-8000-000000000001', '73000000-0000-4000-8000-000000000003', '88888888-8888-8888-8888-888888888888', '2026-10-12 11:30:00+00'),
+  ('88880003-0000-4000-8000-000000000001', '82000000-0000-4000-8000-000000000003', '88888888-8888-8888-8888-888888888888', '2026-10-15 14:15:00+00'),
+  ('88880004-0000-4000-8000-000000000001', '91000000-0000-4000-8000-000000000003', '88888888-8888-8888-8888-888888888888', '2026-10-18 16:45:00+00')
+on conflict (case_id, adviser_id) do update set
+  created_at = excluded.created_at;
+
+-- -----------------------------------------------------------------------------
+-- DEMO ACCOUNTS LINKING (Run in Supabase SQL Editor after registering accounts)
 --
+-- 1. Link Supplier account to Sri Lakshmi Packaging:
 --   update public.businesses
 --      set owner_id = (select id from public.profiles
---                      where email = 'your-supplier@example.com'
+--                      where email = 'supplier@example.com'
 --                        and role = 'supplier'
 --                        and approval_status = 'approved')
 --    where id = '11111111-1111-1111-1111-111111111111';
+--
+-- 2. Link Buyer account to Kaveri Foods & Beverages Pvt Ltd:
+--   update public.buyers
+--      set profile_id = (select id from public.profiles
+--                        where email = 'buyer@example.com'
+--                          and role = 'buyer'
+--                          and approval_status = 'approved')
+--    where id in ('22222222-2222-2222-2222-222222222222', '81000000-0000-4000-8000-000000000002');
+--
+-- 3. Link Adviser account and approve:
+--   update public.profiles
+--      set approval_status = 'approved',
+--          full_name = 'Meera Raghavan, CA',
+--          professional_role = 'Chartered Accountant',
+--          qualifications = 'FCA, DISA (ICAI) · MSME Advisory'
+--    where email = 'adviser@example.com';
+--   update public.case_shares
+--      set adviser_id = (select id from public.profiles where email = 'adviser@example.com')
+--    where adviser_id = '88888888-8888-8888-8888-888888888888';
 -- -----------------------------------------------------------------------------

@@ -97,6 +97,17 @@ def recommend(
         if last and Decimal(str(inv.get("principal_outstanding", "0"))) > 0:
             overdue_days = max(overdue_days, (as_of - date.fromisoformat(last)).days)
 
+    total_principal = sum(Decimal(str(i.get("principal_outstanding", "0"))) for i in invoices)
+    if total_principal <= 0 and total_outstanding > 0:
+        return NextAction(
+            "claim_interest", "Ask for the statutory interest", None, "firm",
+            ["All invoice principal has been received, but payment was made after the statutory due date.",
+             f"Statutory interest of Rs {total_outstanding:,.2f} remains unpaid under Section 16 of the MSMED Act."],
+            [f"invoice:{i['number']}" for i in invoices],
+            alternatives=[Alternative("nudge", "Send a friendly nudge", "Gentler note requesting the statutory interest.")],
+            rule="R3-interest-only",
+        )
+
     # R3: nothing overdue yet
     if overdue_days <= 0:
         nearest = min((date.fromisoformat(i["due"]["last_day_to_pay"]) for i in invoices

@@ -1,4 +1,5 @@
 import type {
+  AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
   EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PromiseCandidate, RateRow, SettlementOption,
 } from "@/types/api";
@@ -161,6 +162,15 @@ export const api = {
   calculate: (body: Record<string, unknown>) =>
     request<CalcResult>("/api/calculate", { method: "POST", body }),
   rates: () => request<RateRow[]>("/api/rates"),
+
+  getBuyerInvoices: () => request<BuyerInvoice[]>("/api/buyer/invoices"),
+  getAdvisers: () => request<AdviserProfile[]>("/api/advisers"),
+  getCaseShares: (caseId: string) => request<CaseShare[]>(`/api/cases/${caseId}/shares`),
+  addCaseShare: (caseId: string, adviserId: string) =>
+    request<CaseShare>(`/api/cases/${caseId}/shares`, { method: "POST", body: { adviser_id: adviserId } }),
+  deleteCaseShare: (caseId: string, shareId: string) =>
+    request<{ deleted: string }>(`/api/cases/${caseId}/shares/${shareId}`, { method: "DELETE" }),
+  getAdviserCases: () => request<AdviserCase[]>("/api/adviser/cases"),
 
   createDraft: (caseId: string, kind: DraftKind) =>
     request<Draft>(`/api/cases/${caseId}/drafts`, { method: "POST", body: { kind } }),

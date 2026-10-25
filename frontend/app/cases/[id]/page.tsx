@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import {
   CaseFactsForm, DraftEditor, RecoveryJourney, EvidenceChecklist, FindingsList, FollowupLog, InvoicesPanel,
-  NextActionCard, PromisesPanel, ReadinessBar, SettlementCard,
+  NextActionCard, PromisesPanel, ReadinessBar, SettlementCard, ShareWithAdviserCard,
 } from "@/components/cases";
 import { BucketBadge, Card, ErrorState, EstimateNote, inputClass, LoadingState, VerdictBadge } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -88,6 +88,7 @@ export default function CasePage() {
                 <EvidenceChecklist caseId={id} evidence={c.evidence} onChange={reload} /></Card>
               <Card title="Messages sent"><FollowupLog ev={ev} onChange={reload} /></Card>
               <Card title="Case facts"><CaseFactsForm key={`${c.po_amount}-${c.dispute_reason}-${c.allocation}`} c={c} onChange={reload} /></Card>
+              <ShareWithAdviserCard caseId={id} />
               <p className="text-xs text-slate-500">Values as of {formatDate(ev.as_of)} · engine {ev.engine_version} · {formatINR(ev.totals.total)} total</p>
             </div>
           </div>

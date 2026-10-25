@@ -30,7 +30,7 @@ ROLES = ("supplier", "buyer", "adviser", "admin")
 @dataclass
 class AuthContext:
     user_id: str | None
-    business_id: str | None
+    business_id: str | None = None
     role: str = "supplier"          # demo mode acts as the demo supplier
     approved: bool = True
 
@@ -104,3 +104,25 @@ def current_business_id(request: Request, authorization: str | None = Header(def
     if ctx.business_id is None:
         raise HTTPException(404, "Set up your business profile first.")
     return ctx.business_id
+
+
+def buyer(request: Request, authorization: str | None = Header(default=None),
+          x_business_id: str | None = Header(default=None)) -> AuthContext:
+    """An approved buyer account."""
+    if request.app.state.settings.auth_mode == "demo":
+        return AuthContext(user_id=None, role="buyer", approved=True)
+    ctx = approved_user(request, authorization, x_business_id)
+    if ctx.role != "buyer":
+        raise HTTPException(403, "This needs a buyer account.")
+    return ctx
+
+
+def adviser(request: Request, authorization: str | None = Header(default=None),
+            x_business_id: str | None = Header(default=None)) -> AuthContext:
+    """An approved adviser account."""
+    if request.app.state.settings.auth_mode == "demo":
+        return AuthContext(user_id=None, role="adviser", approved=True)
+    ctx = approved_user(request, authorization, x_business_id)
+    if ctx.role != "adviser":
+        raise HTTPException(403, "This needs an approved adviser account.")
+    return ctx

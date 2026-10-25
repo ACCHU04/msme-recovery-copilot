@@ -508,3 +508,5 @@ export function CaseFactsForm({ c, onChange }: { c: CaseDetail; onChange: () => 
     </div>
   );
 }
+
+export { ShareWithAdviserCard } from "./ShareWithAdviserCard";

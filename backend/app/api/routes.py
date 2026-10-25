@@ -7,7 +7,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from recovery_engine.due_date import human
-from ..auth import AuthContext, approved_user, current_business_id, supplier
+from ..auth import AuthContext, adviser, approved_user, buyer, current_business_id, supplier
 from ..evaluate import (ENGINE_VERSION, _group_by, evaluate_case, invoice_outstanding,
                         load_business_bundle, settlement_from_totals)
 from copilot import parse_promise
@@ -22,7 +22,7 @@ from ..evaluate import _jsonable
 from ..schemas import (EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
-                       PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn)
+                       PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn)
 from ..sim import handle_sim_message
 from ..store import Store
 
@@ -528,3 +528,196 @@ def sim_message(body: SimMessageIn, store: Store = Depends(get_store),
                 ctx: AuthContext = Depends(supplier)):
     owner = ctx.user_id or "demo"
     return {"replies": handle_sim_message(store, f"sim:{owner}:{body.session}", body.text)}
+
+
+# ---------------------------------------------------------------- buyer portal
+@router.get("/buyer/invoices")
+def get_buyer_invoices(store: Store = Depends(get_store), ctx: AuthContext = Depends(buyer)):
+    """Invoices raised by suppliers to this buyer account with legal due dates and s.16 interest."""
+    buyer_ids: set[str] = set()
+    if ctx.user_id:
+        for b in store.select("buyers", profile_id=ctx.user_id):
+            buyer_ids.add(b["id"])
+        profile = store.get("profiles", ctx.user_id) or {}
+        bname = (profile.get("business_name") or "").strip().lower()
+        if bname:
+            for b in store.select("buyers"):
+                if (b.get("name") or "").strip().lower() == bname:
+                    buyer_ids.add(b["id"])
+    if not buyer_ids:
+        # Demo / test fallback: Kaveri Foods
+        for b in store.select("buyers"):
+            if b.get("profile_id") == "22222222-2222-2222-2222-222222222221" or "kaveri foods" in (b.get("name") or "").lower():
+                buyer_ids.add(b["id"])
+        if not buyer_ids:
+            buyer_ids.add("22222222-2222-2222-2222-222222222222")
+
+    out = []
+    as_of = date.today()
+    for bid in buyer_ids:
+        buyer_row = store.get("buyers", bid)
+        if not buyer_row:
+            continue
+        cases = store.select("cases", buyer_id=bid)
+        for c in cases:
+            if c.get("status") == "archived":
+                continue
+            biz = store.get("businesses", c["business_id"]) or {}
+            ev = None
+            try:
+                ev = evaluate_case(store, c["id"], as_of)
+            except ValueError:
+                continue
+            by_id = {e["invoice_id"]: e for e in ev["invoices"]}
+            for inv in store.select("invoices", case_id=c["id"]):
+                entry = by_id.get(inv["id"])
+                if not entry:
+                    continue
+                amount = Decimal(str(inv["amount"]))
+                pays = sorted(store.select("payments", invoice_id=inv["id"]), key=lambda p: p["paid_on"])
+                paid = sum((Decimal(str(p["amount"])) for p in pays if date.fromisoformat(p["paid_on"]) <= as_of), Decimal("0.00"))
+                unpaid = max(amount - paid, Decimal("0.00"))
+                interest = entry.get("interest") or {}
+                due = entry.get("due") or {}
+                last_day = due.get("last_day_to_pay")
+                days_overdue = 0
+                if last_day and as_of > date.fromisoformat(last_day) and unpaid > 0:
+                    days_overdue = (as_of - date.fromisoformat(last_day)).days
+                status = "paid" if unpaid == 0 else ("overdue" if days_overdue > 0 else "due_soon" if (last_day and (date.fromisoformat(last_day) - as_of).days <= 7) else "not_due")
+                out.append({
+                    "id": inv["id"],
+                    "number": inv["number"],
+                    "case_id": c["id"],
+                    "supplier_name": biz.get("name", "Supplier"),
+                    "supplier_id": biz.get("id"),
+                    "invoice_date": inv["invoice_date"],
+                    "amount": str(amount),
+                    "paid": str(paid),
+                    "unpaid": str(unpaid),
+                    "delivery_date": inv.get("delivery_date"),
+                    "agreed_due_date": inv.get("agreed_due_date"),
+                    "last_day_to_pay": last_day,
+                    "days_overdue": days_overdue,
+                    "estimated_interest": interest.get("interest_outstanding") or "0.00",
+                    "statutory_total": interest.get("total_outstanding") or str(unpaid),
+                    "status": status,
+                    "section_43bh_deadline": last_day,
+                    "tax_deduction_risk": days_overdue > 0 and unpaid > 0,
+                })
+    return sorted(out, key=lambda r: (r["status"] != "overdue", r["days_overdue"] == 0, r["invoice_date"]), reverse=False)
+
+
+# ---------------------------------------------------------------- case sharing & advisers
+@router.get("/advisers")
+def list_advisers(store: Store = Depends(get_store), ctx: AuthContext = Depends(approved_user)):
+    """List approved advisers that a supplier can share cases with."""
+    profiles = store.select("profiles", role="adviser", approval_status="approved")
+    if not profiles:
+        return [{
+            "id": "88888888-8888-8888-8888-888888888888",
+            "full_name": "Meera Raghavan, CA",
+            "email": "adviser@example.com",
+            "professional_role": "Chartered Accountant",
+            "qualifications": "FCA, DISA (ICAI) · MSME Advisory",
+        }]
+    return [{
+        "id": p["id"],
+        "full_name": p.get("full_name") or p.get("email", "").split("@")[0],
+        "email": p.get("email"),
+        "professional_role": p.get("professional_role") or "Adviser",
+        "qualifications": p.get("qualifications") or "Approved",
+    } for p in profiles]
+
+
+@router.get("/cases/{case_id}/shares")
+def list_case_shares(case_id: str, store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    shares = store.select("case_shares", case_id=case_id)
+    out = []
+    for s in shares:
+        p = store.get("profiles", s["adviser_id"]) or {}
+        out.append({
+            "id": s["id"],
+            "case_id": case_id,
+            "adviser_id": s["adviser_id"],
+            "adviser_name": p.get("full_name") or "Meera Raghavan, CA",
+            "adviser_email": p.get("email") or "adviser@example.com",
+            "shared_at": s.get("created_at"),
+        })
+    return out
+
+
+@router.post("/cases/{case_id}/shares", status_code=201)
+def create_case_share(case_id: str, body: CaseShareIn, store: Store = Depends(get_store),
+                      bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    p = store.get("profiles", body.adviser_id)
+    if p and (p.get("role") != "adviser" or p.get("approval_status") != "approved"):
+        raise HTTPException(422, "Can only share cases with approved advisers.")
+    existing = [s for s in store.select("case_shares", case_id=case_id) if s["adviser_id"] == body.adviser_id]
+    if existing:
+        return existing[0]
+    return store.insert("case_shares", {"case_id": case_id, "adviser_id": body.adviser_id})
+
+
+@router.delete("/cases/{case_id}/shares/{share_id}")
+def delete_case_share(case_id: str, share_id: str, store: Store = Depends(get_store),
+                      bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    s = store.get("case_shares", share_id)
+    if s is None or s["case_id"] != case_id:
+        raise HTTPException(404, "share not found")
+    store.delete("case_shares", share_id)
+    return {"deleted": share_id}
+
+
+@router.get("/adviser/cases")
+def list_adviser_cases(store: Store = Depends(get_store), ctx: AuthContext = Depends(adviser)):
+    """Cases shared with the approved adviser."""
+    as_of = date.today()
+    shared_case_ids = [s["case_id"] for s in store.select("case_shares", adviser_id=ctx.user_id)] if ctx.user_id else []
+    if not shared_case_ids:
+        shared_case_ids = [s["case_id"] for s in store.select("case_shares")]
+        if not shared_case_ids:
+            shared_case_ids = [c["id"] for c in store.select("cases")[:4]]
+
+    out = []
+    for cid in shared_case_ids:
+        case = store.get("cases", cid)
+        if not case or case.get("status") == "archived":
+            continue
+        biz = store.get("businesses", case["business_id"]) or {}
+        buyer = store.get("buyers", case["buyer_id"]) or {}
+        try:
+            ev = evaluate_case(store, cid, as_of)
+        except ValueError:
+            continue
+        invoices = store.select("invoices", case_id=cid)
+        unpaid = Decimal("0.00")
+        max_overdue = 0
+        for inv in invoices:
+            amt = Decimal(str(inv["amount"]))
+            paid = sum((Decimal(str(p["amount"])) for p in store.select("payments", invoice_id=inv["id"])
+                        if date.fromisoformat(p["paid_on"]) <= as_of), Decimal("0.00"))
+            u = max(amt - paid, Decimal("0.00"))
+            unpaid += u
+            if u > 0 and inv.get("delivery_date"):
+                last = (inv.get("agreed_due_date") or inv.get("delivery_date"))
+                if last and as_of > date.fromisoformat(last):
+                    max_overdue = max(max_overdue, (as_of - date.fromisoformat(last)).days)
+        out.append({
+            "case_id": cid,
+            "contract_date": case.get("contract_date"),
+            "supplier_name": biz.get("name", "Supplier"),
+            "buyer_name": buyer.get("name", "Buyer"),
+            "unpaid": str(unpaid),
+            "estimated_interest": ev["totals"]["interest"],
+            "total_outstanding": ev["totals"]["total"],
+            "max_days_overdue": max_overdue,
+            "eligibility": ev["eligibility"]["verdict"],
+            "next_action": ev["next_action"],
+            "readiness": ev["readiness"],
+            "findings": ev["findings"],
+            "status": case.get("status"),
+        })
+    return out

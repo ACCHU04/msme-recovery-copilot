@@ -298,3 +298,58 @@ export interface DocumentCheck {
   notes: string;
   case_id: string | null;
 }
+
+
+export interface BuyerInvoice {
+  id: string;
+  number: string;
+  case_id: string;
+  supplier_name: string;
+  supplier_id: string;
+  invoice_date: ISODate;
+  amount: Money;
+  paid: Money;
+  unpaid: Money;
+  delivery_date: ISODate | null;
+  agreed_due_date: ISODate | null;
+  last_day_to_pay: ISODate | null;
+  days_overdue: number;
+  estimated_interest: Money;
+  statutory_total: Money;
+  status: "paid" | "overdue" | "due_soon" | "not_due";
+  section_43bh_deadline: ISODate | null;
+  tax_deduction_risk: boolean;
+}
+
+export interface AdviserProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  professional_role: string;
+  qualifications: string;
+}
+
+export interface CaseShare {
+  id: string;
+  case_id: string;
+  adviser_id: string;
+  adviser_name: string;
+  adviser_email: string;
+  shared_at?: string;
+}
+
+export interface AdviserCase {
+  case_id: string;
+  contract_date: ISODate | null;
+  supplier_name: string;
+  buyer_name: string;
+  unpaid: Money;
+  estimated_interest: Money;
+  total_outstanding: Money;
+  max_days_overdue: number;
+  eligibility: Verdict;
+  next_action: NextAction;
+  readiness: Readiness;
+  findings: Finding[];
+  status: string;
+}

@@ -342,3 +342,7 @@ class LegalAskIn(BaseModel):
         if len(v) < 3:
             raise ValueError("Type a question")
         return v
+
+
+class CaseShareIn(BaseModel):
+    adviser_id: str = Field(min_length=1)
