@@ -29,7 +29,7 @@ function priorityOf(r: ContractRow, ev: Evaluation | null): Row["priority"] {
 async function load(): Promise<Row[]> {
   const rows = await loadContracts();
   return Promise.all(rows.map(async (r) => {
-    const ev = r.invoices.length ? await api.evaluate(r.c.id).catch(() => null) : null;
+    const ev = r.invoices.length ? await api.viewEvaluation(r.c.id).catch(() => null) : null;
     return { ...r, ev, priority: priorityOf(r, ev) };
   }));
 }

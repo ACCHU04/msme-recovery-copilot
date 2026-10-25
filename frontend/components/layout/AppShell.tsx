@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { signOutAction } from "@/app/auth/actions";
 import { AssistantDock } from "@/components/assistant/Dock";
+import { OfflineBanner } from "@/components/layout/OfflineBanner";
 import { canAccess, HOME, ROLE_LABEL, type Viewer } from "@/lib/auth/access";
 import { ViewerContext } from "@/lib/auth/viewer";
 import { getSession, initials, signOut } from "@/lib/session";
@@ -272,7 +273,7 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
             </div>
           </div>
         </header>
-        <main id="main" className="min-w-0 flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24">{children}</main>
+        <main id="main" className="min-w-0 flex-1 p-4 pb-24 sm:p-6 sm:pb-24 lg:p-8 lg:pb-24"><OfflineBanner />{children}</main>
       </div>
       <AssistantDock canCheckDocuments={isSupplier} />
     </div>

@@ -33,7 +33,7 @@ async function load(buyerId: string | null) {
   const mine = cases.filter((c) => c.buyer_id === id);
   const details = await Promise.all(mine.map(async (s) => {
     const c = await api.getCase(s.id);
-    const ev = c.invoices.length ? await api.evaluate(s.id).catch(() => null) : null;
+    const ev = c.invoices.length ? await api.viewEvaluation(s.id).catch(() => null) : null;
     return { c, ev };
   }));
   return { buyers, id, rows: invoices.filter((r) => r.buyer_id === id), details };

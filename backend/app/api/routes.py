@@ -349,6 +349,18 @@ def evaluate(case_id: str, body: EvaluateIn | None = None, store: Store = Depend
     return {"calculation_id": snap["id"], **result}
 
 
+@router.get("/cases/{case_id}/evaluation")
+def view_evaluation(case_id: str, as_of: date | None = None, store: Store = Depends(get_store),
+                    bid: str = Depends(current_business_id)):
+    """Read-only figures for pages that only display them. Unlike POST /evaluate it saves no
+    calculation snapshot, so viewing a page never writes to the database."""
+    _own_case(store, case_id, bid)
+    try:
+        return evaluate_case(store, case_id, as_of or date.today())
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+
+
 @router.get("/cases/{case_id}/settlement")
 def settlement(case_id: str, store: Store = Depends(get_store),
                bid: str = Depends(current_business_id)):

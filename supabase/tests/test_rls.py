@@ -35,7 +35,8 @@ def url():
         for f in ["tests/supabase_stub.sql", "migrations/001_init.sql",
                   "migrations/002_copilot.sql", "migrations/003_auth_roles.sql",
                   "migrations/004_profile_notes_milestones.sql",
-                  "migrations/005_buyer_links_case_shares.sql", "seed.sql"]:
+                  "migrations/005_buyer_links_case_shares.sql",
+                  "migrations/006_indexes_and_constraints.sql", "seed.sql"]:
             c.execute((ROOT / f).read_text())
     yield test_url
     with psycopg.connect(ADMIN_URL, autocommit=True) as c:
@@ -305,3 +306,10 @@ def test_case_sharing_with_advisers(url):
         assert c.execute("select count(*) from case_shares").fetchone()[0] == 0
         with pytest.raises(errors.InsufficientPrivilege):
             c.execute("insert into case_shares (case_id, adviser_id) values (%s, %s)", (case, adviser))
+
+
+def test_duplicate_invoice_number_refused_by_database(url):
+    with psycopg.connect(url) as c:
+        with pytest.raises(errors.UniqueViolation):
+            c.execute("insert into invoices (case_id, number, invoice_date, amount) values "
+                      "('33333333-3333-3333-3333-333333333333', 'INV-114', '2026-03-08', 1)")

@@ -768,3 +768,22 @@ def test_supplier_shares_case_with_approved_adviser_only(secure_client):
     assert secure_client.get("/api/adviser/cases", headers=bearer(token(BUYER))).status_code == 403
     assert secure_client.delete(f"/api/shares/{s.json()['id']}", headers=owner).status_code == 204
     assert secure_client.get("/api/adviser/cases", headers=adv).json() == []
+
+
+def test_read_only_evaluation_saves_nothing(client):
+    store = client.app.state.store
+    before = len(store.select("calculations", case_id=CASE))
+    r = client.get(f"/api/cases/{CASE}/evaluation?as_of=2026-10-25")
+    assert r.status_code == 200 and r.json()["totals"]["total"] == "246072.61"
+    assert len(store.select("calculations", case_id=CASE)) == before
+
+
+def test_unexpected_error_is_json_without_details(monkeypatch):
+    from app import invoices as inv_mod
+    from app.api import routes as routes_mod
+    def boom(*a, **k):
+        raise RuntimeError("secret database detail")
+    monkeypatch.setattr(routes_mod, "list_invoices", boom)
+    c = TestClient(create_app(), raise_server_exceptions=False)
+    r = c.get("/api/invoices")
+    assert r.status_code == 500 and "secret" not in r.text and r.json()["detail"].startswith("Something went wrong")

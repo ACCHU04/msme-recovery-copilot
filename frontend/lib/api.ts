@@ -136,6 +136,9 @@ export const api = {
   setEvidence: (caseId: string, kind: EvidenceKind, status: EvidenceStatus) =>
     request(`/api/cases/${caseId}/evidence/${kind}`, { method: "PUT", body: { status } }),
 
+  /** Read-only figures for display (no snapshot saved; cached briefly like other reads). */
+  viewEvaluation: (caseId: string, asOf?: string) =>
+    request<Evaluation>(`/api/cases/${caseId}/evaluation${asOf ? `?as_of=${asOf}` : ""}`),
   evaluate: (caseId: string, asOf?: string) =>
     request<Evaluation>(`/api/cases/${caseId}/evaluate`, {
       method: "POST",

@@ -36,7 +36,7 @@ export default function ContractPage() {
   const [toast, setToast] = useState<string | null>(null);
   const { data, error, loading, reload } = useAsync(async () => {
     const [c, all, ms] = await Promise.all([api.getCase(id), api.listInvoices(), api.listMilestones(id)]);
-    const ev = c.invoices.length ? await api.evaluate(id) : null;
+    const ev = c.invoices.length ? await api.viewEvaluation(id) : null;
     return { c, ev, inv: all.filter((r) => r.case_id === id), ms };
   }, [id]);
 

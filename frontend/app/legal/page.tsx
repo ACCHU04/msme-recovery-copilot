@@ -187,7 +187,7 @@ function Legal() {
   const ctx = useAsync(async () => {
     if (!selectedId) return null;
     const inv = await api.getInvoice(selectedId);
-    const [ev, c] = await Promise.all([api.evaluate(inv.case.id), api.getCase(inv.case.id)]);
+    const [ev, c] = await Promise.all([api.viewEvaluation(inv.case.id), api.getCase(inv.case.id)]);
     return { inv, ev, c };
   }, [selectedId]);
 
