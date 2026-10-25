@@ -12,6 +12,7 @@ import {
 } from "@/components/ui";
 import { openAssistant } from "@/components/assistant/Dock";
 import { ConfirmationCard } from "@/components/cases/ConfirmationCard";
+import { EInvoiceQR } from "@/components/cases/EInvoiceQR";
 import { api, ApiError } from "@/lib/api";
 import { EVIDENCE_LABEL, formatDate, formatINR, todayISO } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
@@ -53,7 +54,9 @@ function verify(inv: InvoiceDetail, row: InvoiceRow, all: InvoiceRow[], ev: Eval
         : `Deemed accepted on ${formatDate(due?.acceptance_date)}: no written objection recorded within 15 days of delivery.` },
     { label: "Payments recorded are consistent", result: Number(row.paid) <= Number(inv.amount) ? "Passed" : "Needs review",
       detail: `${formatINR(row.paid)} recorded against ${formatINR(inv.amount)}.` },
-    { label: "E-invoice IRN / QR", result: "Not checked", detail: "This app does not connect to the GST e-invoice system." },
+    inv.irn
+      ? { label: "E-invoice IRN / QR", result: "Passed", detail: `IRN ${inv.irn.slice(0, 12)}… saved from the e-invoice's signed QR code after it matched this invoice.` }
+      : { label: "E-invoice IRN / QR", result: "Not checked", detail: "Scan the QR code on the e-invoice (card below) to check it against this invoice." },
   ];
 }
 
@@ -258,6 +261,7 @@ export default function InvoicePage() {
               <FileSearch size={16} aria-hidden /> Check a document with AI
             </Button>
           </Card>
+          <Card title="E-invoice QR code"><EInvoiceQR invoiceId={inv.id} savedIrn={inv.irn} onSaved={reload} /></Card>
           <Card title="Buyer confirmation"><ConfirmationCard invoiceId={inv.id} invoiceNumber={inv.number} buyerName={c.buyer?.name} /></Card>
           <NotesCard invoiceId={inv.id} />
         </div>

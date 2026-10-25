@@ -84,6 +84,8 @@ export interface Invoice {
   objection_removed_date: ISODate | null;
   /** Part of the invoice the buyer objected to in writing; null = whole invoice (if objected). */
   disputed_amount?: Money | null;
+  /** IRN saved from the e-invoice's signed QR code. */
+  irn?: string | null;
   payments: Payment[];
 }
 
@@ -407,4 +409,15 @@ export interface CashFlow {
   overdue_by_age: { label: string; amount: Money; count: number }[];
   chase_first: { case_id: string; buyer_name: string | null; amount: Money; days_overdue: number; reasons: string[]; next_action: string | null; next_action_id: string | null }[];
   note: string;
+}
+
+export interface QRResult {
+  fields: { seller_gstin: string | null; buyer_gstin: string | null; doc_no: string | null; doc_type: string | null;
+    doc_date: ISODate | null; total: Money | null; item_count: number | null; main_hsn: string | null;
+    irn: string | null; irn_date: ISODate | null; issuer: string | null };
+  signature_verified: boolean;
+  signature_note: string;
+  checks: { check: string; status: "match" | "mismatch" | "warning" | "not_comparable"; detail: string }[];
+  verdict: "looks_right" | "check_this" | "not_compared";
+  can_save_irn: boolean;
 }

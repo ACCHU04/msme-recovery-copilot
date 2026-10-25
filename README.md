@@ -62,7 +62,9 @@ database password somewhere safe.
 
 **2. Create the tables and rules.** Dashboard → SQL Editor → run, in this order:
 `supabase/migrations/001_init.sql`, `002_copilot.sql`, `003_auth_roles.sql`,
-`004_profile_notes_milestones.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
+`004_profile_notes_milestones.sql`, `005_buyer_links_case_shares.sql`, `006_security_hardening.sql`,
+`007_payment_blockers.sql`, `008_partial_disputes.sql`, `009_confirmation_links.sql`,
+`010_invoice_irn.sql`, then `supabase/seed.sql` (optional demo data). 003 creates `profiles`, `adviser_reviews`, the
 sign-up trigger, column grants and row level security (explained below).
 
 **3. Auth settings.** Dashboard → Authentication:

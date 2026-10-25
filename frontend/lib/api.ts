@@ -1,7 +1,7 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink } from "@/types/api";
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
 
@@ -229,6 +229,8 @@ export const api = {
   legalStatus: () => request<{ ai_enabled: boolean; model: string | null }>("/api/legal/status"),
   legalAsk: (question: string) => request<LegalAnswer>("/api/legal/ask", { method: "POST", body: { question }, timeoutMs: 30000 }),
 
+  checkQR: (text: string, invoiceId?: string) =>
+    request<QRResult>("/api/documents/qr", { method: "POST", body: { text, invoice_id: invoiceId ?? null } }),
   cashFlow: () => request<CashFlow>("/api/cashflow"),
   listConfirmationLinks: (invoiceId: string) => request<ConfirmationLink[]>(`/api/invoices/${invoiceId}/confirmation-links`),
   createConfirmationLink: (invoiceId: string) =>

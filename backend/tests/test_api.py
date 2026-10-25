@@ -876,3 +876,69 @@ def test_cash_flow_totals_and_chase_order(client):
 
 def test_cash_flow_is_owner_only(secure_client):
     assert secure_client.get("/api/cashflow", headers=bearer(token(BUYER))).status_code == 403
+
+
+# ---------------------------------------------------------------- B1 e-invoice QR
+import json as _json
+
+from cryptography.hazmat.primitives import serialization as _ser
+from cryptography.hazmat.primitives.asymmetric import rsa as _rsa
+
+_PORTAL_KEY = _rsa.generate_private_key(public_exponent=65537, key_size=2048)   # stands in for NIC's key
+_PORTAL_PUB = _PORTAL_KEY.public_key().public_bytes(
+    _ser.Encoding.PEM, _ser.PublicFormat.SubjectPublicKeyInfo).decode()
+IRN = "a" * 63 + "1"
+
+
+def _qr(key=_PORTAL_KEY, **over):
+    data = {"SellerGstin": "29ABCDE1234F1ZW", "BuyerGstin": "29AABCK3419Q1Z1", "DocNo": "INV-114",
+            "DocTyp": "INV", "DocDt": "08/03/2026", "TotInvVal": 180000, "ItemCnt": 2,
+            "MainHsnCode": "4819", "Irn": IRN, "IrnDt": "2026-03-08 11:20:00", **over}
+    return pyjwt.encode({"data": _json.dumps(data), "iss": "NIC"}, key, algorithm="RS256")
+
+
+def test_qr_matching_invoice_looks_right(client):
+    r = client.post("/api/documents/qr", json={"text": _qr(), "invoice_id": INV114}).json()
+    assert r["verdict"] == "looks_right" and r["signature_verified"] is False
+    assert r["fields"]["doc_date"] == "2026-03-08" and r["fields"]["total"] == "180000.00"
+    assert {c["check"]: c["status"] for c in r["checks"]}["Total invoice value"] == "match"
+    assert r["can_save_irn"] is True
+
+
+def test_qr_mismatches_are_flagged(client):
+    r = client.post("/api/documents/qr", json={"text": _qr(TotInvVal=181000, DocNo="INV-115"),
+                                               "invoice_id": INV114}).json()
+    st = {c["check"]: c["status"] for c in r["checks"]}
+    assert r["verdict"] == "check_this" and st["Total invoice value"] == "mismatch"
+    assert st["Invoice number"] == "mismatch" and r["can_save_irn"] is False
+
+
+def test_qr_signature_checked_when_key_configured(client, monkeypatch):
+    monkeypatch.setenv("EINVOICE_PUBLIC_KEY", _PORTAL_PUB)
+    ok = client.post("/api/documents/qr", json={"text": _qr(), "invoice_id": INV114}).json()
+    assert ok["signature_verified"] is True
+    forged = _qr(key=_rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    r = client.post("/api/documents/qr", json={"text": forged, "invoice_id": INV114})
+    assert r.status_code == 422 and "signature does not match" in r.json()["detail"]
+
+
+def test_qr_rejects_text_that_is_not_an_einvoice(client):
+    r = client.post("/api/documents/qr", json={"text": "https://example.com/some/ordinary/qr/link"})
+    assert r.status_code == 422 and "not an e-invoice" in r.json()["detail"]
+
+
+def test_save_irn_then_invoice_shows_it_and_duplicates_are_refused(client):
+    assert client.patch(f"/api/invoices/{INV114}", json={"irn": IRN}).status_code == 200
+    assert client.get(f"/api/invoices/{INV114}").json()["irn"] == IRN
+    again = client.post("/api/documents/qr", json={"text": _qr(), "invoice_id": INV114}).json()
+    assert again["can_save_irn"] is False                     # already saved on this invoice
+    other = "44444444-4444-4444-4444-444444444442"
+    dup = client.post("/api/documents/qr", json={"text": _qr(DocNo="INV-131", TotInvVal=95000,
+                                                             DocDt="02/05/2026"), "invoice_id": other}).json()
+    assert dup["verdict"] == "check_this" and any(c["check"] == "IRN already used" for c in dup["checks"])
+    assert client.patch(f"/api/invoices/{INV114}", json={"irn": "not-an-irn"}).status_code == 422
+
+
+def test_credit_note_qr_is_flagged(client):
+    r = client.post("/api/documents/qr", json={"text": _qr(DocTyp="CRN"), "invoice_id": INV114}).json()
+    assert any(c["check"] == "Document type" and "credit note" in c["detail"] for c in r["checks"])

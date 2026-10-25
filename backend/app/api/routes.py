@@ -17,9 +17,9 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import cashflow as cashflow_mod, doc_check, legal_ai
+from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, legal_ai
 from ..evaluate import _jsonable
-from ..schemas import (ConfirmationIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
+from ..schemas import (ConfirmationIn, QRCheckIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
                        PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn,
@@ -217,7 +217,7 @@ def patch_invoice(invoice_id: str, body: InvoicePatch, store: Store = Depends(ge
     patch = {k: v for k, v in _jsonify(body).items() if v is not None and k != "clear"}
     merged = {**{k: inv.get(k) for k in ("number", "invoice_date", "amount", "delivery_date",
                                          "agreed_due_date", "objection_date",
-                                         "objection_removed_date", "disputed_amount")}, **patch}
+                                         "objection_removed_date", "disputed_amount", "irn")}, **patch}
     for k in body.clear:
         merged[k] = None
     if body.clear and "objection_date" in body.clear:
@@ -909,3 +909,31 @@ def cash_flow(as_of: date | None = None, store: Store = Depends(get_store),
               bid: str = Depends(current_business_id)):
     """Owed now, due or promised in the coming weeks, and which cases to chase first."""
     return cashflow_mod.cash_flow(store, bid, as_of)
+
+
+
+# ---------------------------------------------------------------- B1 e-invoice QR
+@router.post("/documents/qr")
+def check_einvoice_qr(body: QRCheckIn, store: Store = Depends(get_store),
+                      bid: str = Depends(current_business_id)):
+    """Decode an e-invoice's signed QR code (exact, no AI) and compare it with the invoice."""
+    invoice = case = buyer = None
+    if body.invoice_id:
+        invoice, case = _own_invoice(store, body.invoice_id, bid)
+        buyer = store.get("buyers", case["buyer_id"])
+    try:
+        result = einvoice_qr.analyse(body.text, invoice, store.get("businesses", bid), buyer)
+    except einvoice_qr.QRError as e:
+        raise HTTPException(422, str(e))
+    out = result.to_json()
+    irn = result.fields.irn
+    out["can_save_irn"] = bool(invoice and result.verdict == "looks_right" and irn
+                               and einvoice_qr.IRN_RE.match(irn) and invoice.get("irn") != irn)
+    if irn and invoice:
+        other = [i for i in store.select("invoices", irn=irn) if i["id"] != invoice["id"]]
+        if other:
+            out["can_save_irn"] = False
+            out["checks"].append({"check": "IRN already used", "status": "mismatch",
+                                  "detail": f"This IRN is already saved on invoice {other[0]['number']}."})
+            out["verdict"] = "check_this"
+    return out

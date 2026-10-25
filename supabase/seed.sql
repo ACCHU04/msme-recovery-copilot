@@ -415,7 +415,7 @@ update profiles set approval_status = 'approved'
 -- Link Kaveri Foods buyer records to the buyer profile
 update buyers
    set profile_id = '22222222-2222-2222-2222-222222222221',
-       gstin = '29AABCK3419Q1ZP'
+       gstin = '29AABCK3419Q1Z1'
  where id = '22222222-2222-2222-2222-222222222222';
 
 -- Supplier 2: Arunodaya Precision Components (Hosur, TN — Micro Manufacturing)
@@ -425,7 +425,7 @@ values ('81000000-0000-4000-8000-000000000001', 'Arunodaya Precision Components'
         'UDYAM-TN-11-0028471', 'micro', 'manufacturing', true, '2022-08-10',
         'CNC turned pins, hardened bushes and machined automotive fasteners.',
         'sales@arunodaya.example', 'Phase II, SIPCOT Industrial Complex, Hosur, Tamil Nadu 635126',
-        '33AABCA8214M1Z5', 'AABCA8214M', 2018,
+        '33AABCA8214M1ZR', 'AABCA8214M', 2018,
         '["CNC turned pins", "Hardened bushes", "Automotive fasteners"]',
         '[{"name": "K. Senthil Nathan", "role": "Managing Partner", "email": "senthil@arunodaya.example"}]',
         '{"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have", "address_proof": "have", "bank_details": "have"}')
@@ -439,7 +439,7 @@ values ('91000000-0000-4000-8000-000000000001', 'Thenmozhi Knit Works', '+910000
         'UDYAM-TN-27-0091384', 'small', 'services', true, '2026-06-15',
         'Knitted garment job work, dyeing and custom fabric finishing.',
         'accounts@thenmozhi.example', 'Avinashi Road, Anupparpalayam, Tiruppur, Tamil Nadu 641652',
-        '33AAACT9182P1ZB', 'AAACT9182P', 2020,
+        '33AAACT9182P1ZQ', 'AAACT9182P', 2020,
         '["Knitted cotton wear", "Single jersey job work", "Fabric bleaching"]',
         '[{"name": "T. Murugesan", "role": "Proprietor", "email": "murugesan@thenmozhi.example"}]',
         '{"udyam_certificate": "have", "gst_certificate": "have", "pan_card": "have", "address_proof": "have", "bank_details": "unknown"}')
@@ -449,13 +449,13 @@ on conflict (id) do update set
 -- Buyers for Arunodaya and Thenmozhi
 insert into buyers (id, business_id, profile_id, name, gstin, is_cpse, relationship_importance) values
   ('81000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', '22222222-2222-2222-2222-222222222221',
-   'Kaveri Foods Pvt Ltd', '29AABCK3419Q1ZP', false, 'medium'),
+   'Kaveri Foods Pvt Ltd', '29AABCK3419Q1Z1', false, 'medium'),
   ('82000000-0000-4000-8000-000000000002', '81000000-0000-4000-8000-000000000001', null,
-   'Bharat Heavy Electricals Auxiliaries Ltd', '33AAACB0001M1Z1', true, 'high'),
+   'Bharat Heavy Electricals Auxiliaries Ltd', '33AAACB0001M1ZE', true, 'high'),
   ('91000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000001', null,
-   'Maruthi Apparels Export House', '33AABCM4591H1ZT', false, 'high'),
+   'Maruthi Apparels Export House', '33AABCM4591H1ZI', false, 'high'),
   ('92000000-0000-4000-8000-000000000002', '91000000-0000-4000-8000-000000000001', null,
-   'Silver Thread Retailers Ltd', '33AAACS1289N1ZA', false, 'medium')
+   'Silver Thread Retailers Ltd', '33AAACS1289N1Z3', false, 'medium')
 on conflict (id) do update set
   name = excluded.name, profile_id = excluded.profile_id;
 

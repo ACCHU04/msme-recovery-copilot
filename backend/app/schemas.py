@@ -169,6 +169,8 @@ class InvoiceIn(BaseModel):
     objection_removed_date: date | None = None
     # Part of the invoice the buyer objected to; None = the whole invoice (when objected).
     disputed_amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    # IRN from the e-invoice's signed QR code (64 hex characters), saved after it matched.
+    irn: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @field_validator("invoice_date", "delivery_date", "objection_date", "objection_removed_date")
     @classmethod
@@ -256,8 +258,9 @@ class InvoicePatch(BaseModel):
     objection_date: date | None = None
     objection_removed_date: date | None = None
     disputed_amount: Decimal | None = Field(default=None, gt=0, max_digits=14, decimal_places=2)
+    irn: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     clear: list[Literal["delivery_date", "agreed_due_date", "objection_date",
-                        "objection_removed_date", "disputed_amount"]] = []
+                        "objection_removed_date", "disputed_amount", "irn"]] = []
 
     @field_validator("invoice_date", "delivery_date", "objection_date", "objection_removed_date")
     @classmethod
@@ -413,3 +416,10 @@ class ConfirmationIn(BaseModel):
         if self.response == "issue" and not (self.note or "").strip():
             raise ValueError("Please describe the problem.")
         return self
+
+
+
+class QRCheckIn(BaseModel):
+    """The text decoded from an e-invoice QR code (by the browser), and the invoice to compare."""
+    text: str = Field(min_length=20, max_length=8000)
+    invoice_id: str | None = None

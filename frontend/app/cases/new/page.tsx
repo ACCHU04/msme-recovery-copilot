@@ -43,7 +43,7 @@ export default function NewCasePage() {
     const e: Record<string, string> = {};
     if (s === 0 && !buyer.name.trim()) e.buyer_name = "Enter the buyer's name.";
     if (s === 0 && buyer.gstin && !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(buyer.gstin.toUpperCase()))
-      e.gstin = "GSTIN should be 15 characters, like 29ABCDE1234F1Z5.";
+      e.gstin = "GSTIN should be 15 characters, like 29ABCDE1234F1ZW.";
     if (s === 1) {
       if (order.contract_date && order.contract_date > today) e.contract_date = "The PO date can't be in the future.";
       if (order.po_amount && !(Number(order.po_amount) > 0)) e.po_amount = "Enter an amount above zero.";
