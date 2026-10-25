@@ -64,8 +64,8 @@ function Logo({ small }: { small?: boolean }) {
         <rect x="1" y="28" width="30" height="2.5" rx="1.2" fill="currentColor" />
       </svg>
       <span className="leading-tight">
-        <span className={cx("block font-extrabold tracking-tight", small ? "text-base" : "text-xl")}>MSME</span>
-        <span className="block text-[11px] font-medium opacity-90">Payment Recovery Assistant</span>
+        <span className={cx("block font-extrabold tracking-tight", small ? "text-base" : "text-xl")}>Settle45</span>
+        <span className="block text-[11px] font-medium opacity-90">MSME Payment Recovery Assistant</span>
       </span>
     </span>
   );
@@ -196,7 +196,7 @@ export default function AppShell({ children, viewer: serverViewer, authEnabled }
 
   const sidebar = (
     <div className="flex h-full flex-col bg-navy-800 text-white">
-      <div className="px-5 py-4"><Link href={home} aria-label="MSME Payment Recovery Assistant, home"><Logo /></Link></div>
+      <div className="px-5 py-4"><Link href={home} aria-label="Settle45, MSME Payment Recovery Assistant, home"><Logo /></Link></div>
       <nav aria-label="Main" className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3">
         {nav.map(({ href, label, icon: Icon }) => {
           const active = isActive(path, href);

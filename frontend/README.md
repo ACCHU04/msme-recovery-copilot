@@ -1,4 +1,4 @@
-# Frontend: MSME Payment Recovery (LS-03)
+# Frontend: Settle45 (LS-03)
 
 Next.js 15 (App Router) + TypeScript + Tailwind CSS 4 + Lucide icons. Talks to the FastAPI
 backend in `../backend`. No legal calculation happens here: every amount, date, finding and

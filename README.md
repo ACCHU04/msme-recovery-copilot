@@ -1,4 +1,4 @@
-# MSME Payment Recovery Assistant (LS-03, Srujana Tech Fest 2026)
+# Settle45: MSME Payment Recovery Assistant (LS-03, Srujana Tech Fest 2026)
 
 **Recovery Copilot**: helps a micro or small supplier decide what to do next about a
 delayed payment under the MSMED Act, 2006, and why, without losing the customer. It

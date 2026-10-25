@@ -22,7 +22,7 @@ def build_store(settings: Settings) -> Store:
 
 def create_app(settings: Settings | None = None, store: Store | None = None) -> FastAPI:
     settings = settings or get_settings()
-    app = FastAPI(title="LS-03 MSME Payment Recovery API", version="0.1.0")
+    app = FastAPI(title="Settle45 API (LS-03)", version="0.1.0")
     app.state.settings = settings
     app.state.store = store or build_store(settings)
     # AI legal Q&A: off (prepared answers only) unless GEMINI_API_KEY is set.

@@ -10,6 +10,7 @@ Rows are plain dicts with JSON-friendly values (dates and money as strings).
 from __future__ import annotations
 
 import copy
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Protocol
@@ -302,6 +303,7 @@ DEMO_ROWS: dict[str, list[Row]] = {
 
 class MemoryStore:
     def __init__(self, seed: bool = True):
+        self._last_ts: float = 0.0
         self.tables: dict[str, list[Row]] = copy.deepcopy(DEMO_ROWS) if seed else {
             t: [] for t in DEMO_ROWS}
 
@@ -318,7 +320,11 @@ class MemoryStore:
         row = {"id": str(uuid.uuid4()), **row}
         if table in ("calculations", "drafts", "cases", "businesses", "promises", "followups",
                      "milestones", "invoice_notes"):
-            row.setdefault("created_at", datetime.now(timezone.utc).isoformat())
+            now = time.time()
+            if now <= self._last_ts:
+                now = self._last_ts + 0.001
+            self._last_ts = now
+            row.setdefault("created_at", datetime.fromtimestamp(now, tz=timezone.utc).isoformat())
         self.tables[table].append(copy.deepcopy(row))
         return row
 

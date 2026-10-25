@@ -6,7 +6,7 @@ import { authEnabled, VIEWER_HEADER } from "@/lib/auth/config";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "MSME Payment Recovery",
+  title: "Settle45 · MSME Payment Recovery",
   description: "Recovery Copilot for delayed payments under the MSMED Act (LS-03)",
 };
 
