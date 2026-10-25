@@ -1,7 +1,7 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PromiseCandidate, RateRow, SettlementOption,
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption,
 } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
@@ -198,6 +198,26 @@ export const api = {
   patchMilestone: (id: string, body: Partial<Pick<Milestone, "title" | "due_date" | "amount" | "invoice_id">>) =>
     request<Milestone>(`/api/milestones/${id}`, { method: "PATCH", body }),
   deleteMilestone: (id: string) => request(`/api/milestones/${id}`, { method: "DELETE" }),
+
+  listBlockers: (caseId: string) => request<PaymentBlocker[]>(`/api/cases/${caseId}/blockers`),
+  addBlocker: (caseId: string, body: {
+    reason: string;
+    source?: string;
+    invoice_id?: string | null;
+    disputed_amount?: string | null;
+    note?: string | null;
+    reported_on?: string;
+  }) => request<PaymentBlocker>(`/api/cases/${caseId}/blockers`, { method: "POST", body }),
+  patchBlocker: (id: string, body: {
+    reason?: string;
+    source?: string;
+    invoice_id?: string | null;
+    disputed_amount?: string | null;
+    note?: string | null;
+    reported_on?: string;
+    resolved_on?: string | null;
+  }) => request<PaymentBlocker>(`/api/blockers/${id}`, { method: "PATCH", body }),
+  deleteBlocker: (id: string) => request<{ ok: boolean }>(`/api/blockers/${id}`, { method: "DELETE" }),
 
   /** Read a photo/PDF with AI and compare it with the records (nothing is stored). */
   checkDocument: (file: File, opts: { invoiceId?: string; expected?: string }) => {

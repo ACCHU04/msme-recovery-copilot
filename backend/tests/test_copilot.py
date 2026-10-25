@@ -208,3 +208,66 @@ def test_paid_late_interest_only_claim_interest():
     assert a.action == "claim_interest"
     assert a.rule == "R3-interest-only"
     assert "Ask for the statutory interest" in a.label
+
+# ---------------------------------------------------------------- payment blockers
+def test_payment_blocker_triggers_r1b():
+    blockers = [{
+        "id": "blk-1",
+        "reason": "po_missing",
+        "source": "buyer_said",
+        "reported_on": "2026-03-20",
+        "resolved_on": None,
+        "note": "PO required",
+    }]
+    a = rec(blockers=blockers)
+    assert a.action == "fix_blocker_po"
+    assert a.draft_kind == "fix_blocker_po"
+    assert a.rule == "R1b-fix-blocker"
+    assert "Send a corrected invoice quoting the PO" in a.label
+
+
+def test_payment_blocker_waiting_approval_does_not_trigger_r1b():
+    blockers = [{
+        "id": "blk-2",
+        "reason": "waiting_approval",
+        "source": "buyer_said",
+        "reported_on": "2026-03-20",
+        "resolved_on": None,
+    }]
+    a = rec(blockers=blockers)
+    assert a.rule != "R1b-fix-blocker"
+
+
+def test_payment_blocker_resolved_does_not_trigger_r1b():
+    blockers = [{
+        "id": "blk-3",
+        "reason": "po_missing",
+        "source": "buyer_said",
+        "reported_on": "2026-03-20",
+        "resolved_on": "2026-03-24",
+    }]
+    a = rec(blockers=blockers)
+    assert a.rule != "R1b-fix-blocker"
+
+
+def test_payment_blocker_caution_after_15_days():
+    invoices = [{
+        "invoice_id": "inv-1",
+        "delivery_date": "2026-01-01",
+        "status": "computed",
+        "due": {"last_day_to_pay": "2026-01-16"},
+    }]
+    blockers = [{
+        "id": "blk-4",
+        "invoice_id": "inv-1",
+        "reason": "grn_not_entered",
+        "source": "documented",
+        "reported_on": "2026-02-01",
+        "resolved_on": None,
+    }]
+    a = rec(invoices=invoices, blockers=blockers)
+    assert a.action == "fix_blocker_grn"
+    assert a.caution is not None
+    assert "MSMED Act s.2(b)" in a.caution
+    assert "does not change your legal due date" in a.caution
+

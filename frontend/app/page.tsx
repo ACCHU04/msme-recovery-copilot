@@ -11,16 +11,23 @@ import { api } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import { useViewer } from "@/lib/auth/viewer";
 import { useAsync } from "@/lib/useAsync";
-import type { CaseSummary, InvoiceRow, NextAction, Totals } from "@/types/api";
+import type { CaseSummary, Evaluation, InvoiceRow } from "@/types/api";
 
 async function load() {
   const [invoices, cases] = await Promise.all([api.listInvoices(), api.listCases()]);
   const open = cases.filter((c) => c.totals && Number(c.totals.total) > 0 && c.status !== "settled");
   const evals = await Promise.all(open.slice(0, 6).map(async (c) => {
-    if (c.next_action && c.totals) return { c, ev: { totals: c.totals, next_action: c.next_action } };
-    try { return { c, ev: await api.evaluate(c.id) }; } catch { return null; }
+    try {
+      const ev = await api.evaluate(c.id);
+      return { c, ev };
+    } catch {
+      if (c.next_action && c.totals) {
+        return { c, ev: { totals: c.totals, next_action: c.next_action } as unknown as Evaluation };
+      }
+      return null;
+    }
   }));
-  return { invoices, cases, evaluated: evals.filter(Boolean) as { c: CaseSummary; ev: { totals: Totals; next_action: NextAction } }[] };
+  return { invoices, cases, evaluated: evals.filter(Boolean) as { c: CaseSummary; ev: Evaluation }[] };
 }
 
 function greeting() {
@@ -47,6 +54,10 @@ export default function Dashboard() {
   const years = [...new Set((data?.invoices ?? []).map((r) => r.invoice_date.slice(0, 4)))].sort().reverse();
   const rows = (data?.invoices ?? []).filter((r) => period === "all" || r.invoice_date.startsWith(period));
   const overdue = rows.filter((r) => r.status === "overdue");
+  const openBlockersCount = (data?.evaluated ?? []).reduce(
+    (sum, item) => sum + (item.ev.blockers?.filter((b) => !b.resolved_on).length ?? 0),
+    0
+  );
   const upcoming = rows.filter((r) => r.status === "due_soon" || r.status === "not_due").sort((a, b) => (a.days_left ?? 999) - (b.days_left ?? 999));
 
   return (
@@ -92,7 +103,17 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <Card title={<span className="flex items-center gap-2"><Gavel size={20} className="text-brand-600" aria-hidden /> Recovery cases</span>}
+            <Card title={
+              <div className="flex flex-wrap items-center gap-2">
+                <Gavel size={20} className="text-brand-600" aria-hidden />
+                <span>Recovery cases</span>
+                {openBlockersCount > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                    {openBlockersCount} blocker{openBlockersCount > 1 ? "s" : ""} open
+                  </span>
+                )}
+              </div>
+            }
               action={<Link href="/cases" className="text-sm font-semibold text-brand-600 hover:underline">View all</Link>}>
               {data.evaluated.length === 0 ? <p className="text-sm text-slate-600">No open cases.</p> : (
                 <div className="relative overflow-x-auto">
@@ -105,7 +126,14 @@ export default function Dashboard() {
                     </tr></thead>
                     <tbody>{data.evaluated.map(({ c, ev }) => (
                       <tr key={c.id} className="border-b border-slate-100 last:border-0">
-                        <td className="py-3 pl-3 font-medium"><Link href={`/cases/${c.id}`} className="hover:underline">{c.buyer_name}</Link></td>
+                        <td className="py-3 pl-3 font-medium">
+                          <Link href={`/cases/${c.id}`} className="hover:underline">{c.buyer_name}</Link>
+                          {(ev.blockers?.filter((b) => !b.resolved_on).length ?? 0) > 0 && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+                              {(ev.blockers?.filter((b) => !b.resolved_on).length ?? 0)} blocker open
+                            </span>
+                          )}
+                        </td>
                         <td className="py-3 text-right tabular-nums">{formatINR(ev.totals.total)}</td>
                         <td className="py-3 pl-4"><span className="inline-block rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-brand-700 ring-1 ring-blue-200">{ev.next_action.label}</span></td>
                       </tr>))}

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from decimal import Decimal
 
-KINDS = ("acceptance_confirm", "nudge", "firm", "demand")
+KINDS = ("acceptance_confirm", "nudge", "firm", "demand", "fix_blocker_po", "fix_blocker_grn", "fix_blocker_amount", "resolve_dispute", "fix_blocker")
 
 
 def _inr(x) -> str:
@@ -77,6 +77,39 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                 f"{promise_line}{interest_line}{tax_line}\n\nPlease arrange payment of {_inr(amount)} "
                 f"by {_d(pay_by)}. If there is any issue with the invoices, please tell us so "
                 f"we can resolve it.\n\nRegards,\n{business_name}")
+    elif kind == "fix_blocker_po":
+        amount = total if eligible else unpaid_simple
+        body = (f"Hello {buyer_name} team,\n\nFollowing up on {numbers}, we understand that your accounts "
+                f"team requires the Purchase Order number on the invoice copy. We have updated "
+                f"the invoice to clearly quote your PO number. Please find the revised invoice attached.\n\n"
+                f"Could you please confirm receipt and process the payment of {_inr(amount)}?\n\n"
+                f"Thank you,\n{business_name}")
+    elif kind == "fix_blocker_grn":
+        amount = total if eligible else unpaid_simple
+        body = (f"Hello {buyer_name} team,\n\nRegarding {numbers}, we understand payment processing is "
+                f"awaiting Goods Receipt Note (GRN) entry in your system. Please find attached the "
+                f"signed delivery challan confirming delivery at your premises.\n\n"
+                f"Could you please ask your stores team to record the GRN so payment of {_inr(amount)} "
+                f"can be released?\n\nThank you,\n{business_name}")
+    elif kind == "fix_blocker_amount":
+        amount = total if eligible else unpaid_simple
+        body = (f"Hello {buyer_name} team,\n\nRegarding the amount or GST reconciliation query on {numbers}, "
+                f"we have reviewed our billing calculations and attached the reconciliation statement / "
+                f"credit-debit note adjustment.\n\n"
+                f"Could you please confirm this resolves the difference and process the payment of "
+                f"{_inr(amount)}?\n\nThank you,\n{business_name}")
+    elif kind == "resolve_dispute":
+        amount = total if eligible else unpaid_simple
+        body = (f"Hello {buyer_name} team,\n\nRegarding the quality objection raised on {numbers}, we take "
+                f"product quality very seriously and our team is ready to inspect and resolve the flagged items.\n\n"
+                f"In the meantime, could you please release payment for the undisputed portion of the order "
+                f"({_inr(amount)})?\n\nThank you,\n{business_name}")
+    elif kind == "fix_blocker":
+        amount = total if eligible else unpaid_simple
+        body = (f"Hello {buyer_name} team,\n\nFollowing up on {numbers}, we have noted your query holding up "
+                f"payment and provided the necessary clarification and records.\n\n"
+                f"Could you please review and confirm when payment of {_inr(amount)} will be released?\n\n"
+                f"Thank you,\n{business_name}")
     else:  # demand
         if not eligible:
             raise ValueError("A formal demand under the MSMED Act is not drafted because "

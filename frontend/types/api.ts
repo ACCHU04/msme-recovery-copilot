@@ -9,7 +9,39 @@ export type EvidenceKind =
   | "po" | "invoice" | "delivery_proof" | "acceptance_reply"
   | "ledger" | "communications" | "udyam_cert";
 export type EvidenceStatus = "have" | "missing" | "unknown";
-export type DraftKind = "acceptance_confirm" | "nudge" | "firm" | "demand";
+export type DraftKind =
+  | "acceptance_confirm"
+  | "nudge"
+  | "firm"
+  | "demand"
+  | "fix_blocker_po"
+  | "fix_blocker_grn"
+  | "fix_blocker_amount"
+  | "resolve_dispute"
+  | "fix_blocker";
+
+export type BlockerReason =
+  | "po_missing"
+  | "grn_not_entered"
+  | "amount_mismatch"
+  | "quality_dispute"
+  | "waiting_approval"
+  | "other";
+
+export type BlockerSource = "buyer_said" | "documented" | "not_verified";
+
+export interface PaymentBlocker {
+  id: string;
+  case_id: string;
+  invoice_id: string | null;
+  reason: BlockerReason;
+  source: BlockerSource;
+  disputed_amount: Money | null;
+  note: string | null;
+  reported_on: ISODate;
+  resolved_on: ISODate | null;
+  created_at?: string;
+}
 
 export interface Totals { principal: Money; interest: Money; total: Money }
 
@@ -166,6 +198,7 @@ export interface Evaluation {
   readiness: Readiness;
   promises: PromiseStatus[];
   followups: Followup[];
+  blockers?: PaymentBlocker[];
 }
 
 export interface SettlementOption {

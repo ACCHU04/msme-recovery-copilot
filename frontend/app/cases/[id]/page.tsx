@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import {
   CaseFactsForm, DraftEditor, RecoveryJourney, EvidenceChecklist, FindingsList, FollowupLog, InvoicesPanel,
-  NextActionCard, PromisesPanel, ReadinessBar, SettlementCard, ShareWithAdviserCard,
+  BlockersCard, NextActionCard, PromisesPanel, ReadinessBar, SettlementCard, ShareWithAdviserCard,
 } from "@/components/cases";
 import { BucketBadge, Card, ErrorState, EstimateNote, inputClass, LoadingState, VerdictBadge } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -78,6 +78,7 @@ export default function CasePage() {
               <RecoveryJourney ev={ev} />
               <NextActionCard ev={ev} onDraft={setDraftKind} />
               {draftKind && <DraftEditor caseId={id} kind={draftKind} onClose={() => setDraftKind(null)} onLogged={reload} />}
+              <BlockersCard caseId={id} ev={ev} onDraft={setDraftKind} onChange={reload} />
               <Card title="Case check"><FindingsList findings={ev.findings} /></Card>
               <Card title="Invoices"><InvoicesPanel ev={ev} /></Card>
               <Card title="Payment promises"><PromisesPanel caseId={id} ev={ev} onChange={reload} /></Card>

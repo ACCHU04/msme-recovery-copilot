@@ -12,6 +12,40 @@ from decimal import Decimal
 from .promises import PromiseStatus
 from .reconcile import EVIDENCE_LABELS, Finding, Readiness
 
+BLOCKER_ACTIONS = {
+    "po_missing": (
+        "fix_blocker_po",
+        "Send a corrected invoice quoting the PO",
+        "The buyer reported that the PO number is missing on the invoice.",
+        "Send a corrected invoice quoting the buyer's PO number to unblock processing.",
+    ),
+    "grn_not_entered": (
+        "fix_blocker_grn",
+        "Share delivery challan for GRN entry",
+        "The buyer stated that stores has not yet recorded the Goods Receipt Note (GRN).",
+        "Share the signed challan and ask the buyer's stores team to enter the GRN.",
+    ),
+    "amount_mismatch": (
+        "fix_blocker_amount",
+        "Resolve amount or GST mismatch",
+        "The buyer reported a mismatch in the invoice amount or GST calculation.",
+        "Issue a credit note or debit note to reconcile the difference.",
+    ),
+    "quality_dispute": (
+        "resolve_dispute",
+        "Address buyer's quality objection",
+        "The buyer raised a quality objection regarding delivered goods.",
+        "Address the quality issue; chase the undisputed principal portion.",
+    ),
+    "other": (
+        "fix_blocker",
+        "Address buyer's payment blocker",
+        "The buyer gave a specific reason holding up payment.",
+        "Address the buyer's concern or request formal clarification.",
+    ),
+}
+
+
 LADDER = {
     1: ("nudge", "Send a friendly nudge"),
     2: ("firm", "Send a firm reminder"),
@@ -68,6 +102,7 @@ def recommend(
     promises: list[PromiseStatus],
     followups: list[Followup],
     importance: str | None,          # low | medium | high
+    blockers: list[dict] | None = None,
 ) -> NextAction:
     ids = {f.id: f for f in findings}
 
@@ -83,6 +118,48 @@ def recommend(
                 [ids[fid].message, "Asking for payment now would harden the dispute and "
                  "the buyer can raise it later as a counter-claim."],
                 ids[fid].sources, caution=ids[fid].fix, rule="R1-dispute")
+
+    # R1b: active payment blockers reported by the buyer
+    if blockers:
+        active = [b for b in blockers if not b.get("resolved_on")]
+        actionable = [b for b in active if b.get("reason") != "waiting_approval"]
+        if actionable:
+            b = min(actionable, key=lambda x: str(x.get("reported_on", "")))
+            reason_code = b.get("reason", "other")
+            act, lbl, def_reason, fix_msg = BLOCKER_ACTIONS.get(
+                reason_code, BLOCKER_ACTIONS["other"]
+            )
+            reasons = [def_reason]
+            if b.get("note"):
+                reasons.append(f"Buyer note: {b['note']}")
+            if b.get("source") == "documented":
+                reasons.append("Blocker is documented in writing.")
+            elif b.get("source") == "buyer_said":
+                reasons.append("Stated verbally by the buyer.")
+
+            caution = None
+            rep_str = b.get("reported_on")
+            if rep_str:
+                rep_date = date.fromisoformat(rep_str) if isinstance(rep_str, str) else rep_str
+                target_inv = None
+                if b.get("invoice_id"):
+                    target_inv = next((i for i in invoices if i.get("invoice_id") == b["invoice_id"]), None)
+                if not target_inv and invoices:
+                    target_inv = invoices[0]
+                if target_inv and target_inv.get("delivery_date"):
+                    del_date = date.fromisoformat(target_inv["delivery_date"]) if isinstance(target_inv["delivery_date"], str) else target_inv["delivery_date"]
+                    if (rep_date - del_date).days > 15:
+                        caution = ("This blocker was reported after the statutory 15-day objection period "
+                                   "(MSMED Act s.2(b)). It does not change your legal due date or pause interest.")
+
+            return NextAction(
+                act, lbl, None, act,
+                reasons,
+                [f"blocker:{b.get('id', reason_code)}"],
+                alternatives=_alternatives(1, 2),
+                caution=caution,
+                rule="R1b-fix-blocker",
+            )
 
     # R2: facts missing for the calculation
     if "delivery_date_missing" in ids:

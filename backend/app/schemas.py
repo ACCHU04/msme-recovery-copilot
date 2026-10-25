@@ -285,7 +285,10 @@ class CalculateIn(BaseModel):
 
 
 class DraftIn(BaseModel):
-    kind: Literal["acceptance_confirm", "nudge", "firm", "demand"]
+    kind: Literal[
+        "acceptance_confirm", "nudge", "firm", "demand",
+        "fix_blocker_po", "fix_blocker_grn", "fix_blocker_amount", "resolve_dispute", "fix_blocker"
+    ]
     lang: Literal["en"] = "en"
 
 
@@ -346,3 +349,45 @@ class LegalAskIn(BaseModel):
 
 class CaseShareIn(BaseModel):
     adviser_id: str = Field(min_length=1)
+
+# ---------------------------------------------------------------- payment blockers
+BLOCKER_REASONS = (
+    "po_missing", "grn_not_entered", "amount_mismatch",
+    "quality_dispute", "waiting_approval", "other",
+)
+BLOCKER_SOURCES = ("buyer_said", "documented", "not_verified")
+
+
+class BlockerIn(BaseModel):
+    reason: Literal[
+        "po_missing", "grn_not_entered", "amount_mismatch",
+        "quality_dispute", "waiting_approval", "other"
+    ]
+    source: Literal["buyer_said", "documented", "not_verified"] = "not_verified"
+    invoice_id: str | None = None
+    disputed_amount: Decimal | None = Field(default=None, ge=0)
+    note: str | None = Field(default=None, max_length=1000)
+    reported_on: date | None = None
+    resolved_on: date | None = None
+
+    @field_validator("note")
+    @classmethod
+    def note_not_blank(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                return None
+        return v
+
+
+class BlockerPatch(BaseModel):
+    reason: Literal[
+        "po_missing", "grn_not_entered", "amount_mismatch",
+        "quality_dispute", "waiting_approval", "other"
+    ] | None = None
+    source: Literal["buyer_said", "documented", "not_verified"] | None = None
+    invoice_id: str | None = None
+    disputed_amount: Decimal | None = None
+    note: str | None = Field(default=None, max_length=1000)
+    reported_on: date | None = None
+    resolved_on: date | None = None

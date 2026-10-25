@@ -485,6 +485,20 @@ DEMO_ROWS: dict[str, list[Row]] = {
             "created_at": "2026-10-18T16:45:00+00:00",
         },
     ],
+    "payment_blockers": [
+        {
+            "id": "77770001-0000-4000-8000-000000000001",
+            "case_id": "33333333-3333-3333-3333-333333333333",
+            "invoice_id": "44444444-4444-4444-4444-444444444441",
+            "reason": "po_missing",
+            "source": "buyer_said",
+            "disputed_amount": None,
+            "note": "Accounts team requested PO number 2026/PO/0882 to be printed on the invoice copy.",
+            "reported_on": "2026-03-20",
+            "resolved_on": "2026-03-24",
+            "created_at": "2026-03-20T10:30:00+00:00",
+        },
+    ],
 }
 
 class MemoryStore:
@@ -505,7 +519,7 @@ class MemoryStore:
     def insert(self, table: str, row: Row) -> Row:
         row = {"id": str(uuid.uuid4()), **row}
         if table in ("calculations", "drafts", "cases", "businesses", "promises", "followups",
-                     "milestones", "invoice_notes", "case_shares"):
+                     "milestones", "invoice_notes", "case_shares", "payment_blockers"):
             now = time.time()
             if now <= self._last_ts:
                 now = self._last_ts + 0.001
@@ -548,6 +562,7 @@ class SupabaseStore:
             "case_shares": copy.deepcopy(DEMO_ROWS.get("case_shares", [])),
             "milestones": copy.deepcopy(DEMO_ROWS.get("milestones", [])),
             "invoice_notes": copy.deepcopy(DEMO_ROWS.get("invoice_notes", [])),
+            "payment_blockers": copy.deepcopy(DEMO_ROWS.get("payment_blockers", [])),
         }
 
     def _fallback_select(self, table: str, eq: dict[str, Any]) -> list[Row]:

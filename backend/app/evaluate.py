@@ -98,6 +98,7 @@ def load_business_bundle(store: Store, business_id: str) -> dict[str, Any]:
         "evidence_by_case": _group_by(store.select("evidence_items", case_id=case_ids) if case_ids else [], "case_id"),
         "promises_by_case": _group_by(store.select("promises", case_id=case_ids) if case_ids else [], "case_id"),
         "followups_by_case": _group_by(store.select("followups", case_id=case_ids) if case_ids else [], "case_id"),
+        "blockers_by_case": _group_by(store.select("payment_blockers", case_id=case_ids) if case_ids else [], "case_id"),
     }
 
 
@@ -141,6 +142,7 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
         evidence_rows = bundle["evidence_by_case"].get(case_id, [])
         promise_rows = bundle["promises_by_case"].get(case_id, [])
         followup_rows = bundle["followups_by_case"].get(case_id, [])
+        blocker_rows = bundle.get("blockers_by_case", {}).get(case_id, [])
     else:
         case = store.get("cases", case_id)
         invoices = store.select("invoices", case_id=case_id) if case else []
@@ -151,6 +153,7 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
         evidence_rows = None
         promise_rows = None
         followup_rows = None
+        blocker_rows = None
 
     if case is None:
         raise LookupError("case not found")
@@ -228,6 +231,7 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
         store, case, invoices, out_invoices, elig.verdict.value, tot_p + tot_i, as_of,
         business=business, buyer=buyer, payments_by_inv=payments_by_inv,
         evidence_rows=evidence_rows, promise_rows=promise_rows, followup_rows=followup_rows,
+        blocker_rows=blocker_rows,
     )
     return {
         "case_id": case_id,
@@ -237,6 +241,7 @@ def evaluate_case(store: Store, case_id: str, as_of: date | None = None, *,
         "readiness": copilot["readiness"],
         "promises": copilot["promises"],
         "followups": copilot["followups"],
+        "blockers": copilot.get("blockers", []),
         "engine_version": ENGINE_VERSION,
         "eligibility": _jsonable(elig),
         "invoices": out_invoices,
@@ -252,7 +257,8 @@ def run_copilot(store: Store, case: Row, invoices: list[Row], evaluated: list[di
                 payments_by_inv: dict[str, list[Row]] | None = None,
                 evidence_rows: list[Row] | None = None,
                 promise_rows: list[Row] | None = None,
-                followup_rows: list[Row] | None = None) -> dict:
+                followup_rows: list[Row] | None = None,
+                blocker_rows: list[Row] | None = None) -> dict:
     if business is None:
         business = store.get("businesses", case["business_id"]) or {}
     if buyer is None:
@@ -280,8 +286,11 @@ def run_copilot(store: Store, case: Row, invoices: list[Row], evaluated: list[di
     followups = [Followup(int(f["step"]), _d(f["sent_on"]), bool(f.get("reply_received")))
                  for f in fu_rows if _d(f["sent_on"]) <= as_of]
 
+    if blocker_rows is None:
+        blocker_rows = store.select("payment_blockers", case_id=case["id"])
+
     action = recommend(as_of, verdict, findings, readiness, evaluated, total, statuses,
-                       followups, buyer.get("relationship_importance"))
+                       followups, buyer.get("relationship_importance"), blockers=blocker_rows)
     return {
         "next_action": _jsonable(action),
         "findings": _jsonable(findings),
@@ -289,6 +298,7 @@ def run_copilot(store: Store, case: Row, invoices: list[Row], evaluated: list[di
         "promises": [{**_jsonable(s), "source_text": texts.get(s.promise_id)}
                      for s in statuses],
         "followups": fu_rows,
+        "blockers": blocker_rows,
     }
 
 

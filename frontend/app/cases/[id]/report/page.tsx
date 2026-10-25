@@ -99,6 +99,22 @@ function Report() {
         </section>
       )}
 
+      {ev.blockers && ev.blockers.length > 0 && (
+        <section>
+          <h2 className="font-semibold">Payment blockers reported</h2>
+          <ul className="mt-2 list-disc pl-5 text-xs space-y-1">
+            {ev.blockers.map((b) => (
+              <li key={b.id}>
+                <strong>{b.reason.replace(/_/g, " ")}</strong> ({b.source.replace(/_/g, " ")}): reported {formatDate(b.reported_on)}
+                {b.disputed_amount ? ` · disputed amount ${formatINR(b.disputed_amount)}` : ""}
+                {b.resolved_on ? ` · resolved on ${formatDate(b.resolved_on)}` : " · OPEN"}
+                {b.note ? ` — "${b.note}"` : ""}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {ev.promises.length > 0 && (
         <section>
           <h2 className="font-semibold">Payment promises</h2>

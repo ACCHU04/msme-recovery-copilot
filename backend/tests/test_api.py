@@ -692,3 +692,48 @@ def test_notes_newest_first_and_cleaned_up_with_invoice(client):
     store = client.app.state.store
     assert store.select("invoice_notes", invoice_id=INV114) == []
     assert store.get("milestones", MS1)["invoice_id"] is None   # milestone kept, link removed
+
+# ---------------------------------------------------------------- payment blockers
+def test_payment_blockers_crud_and_draft(client):
+    # 1. Create blocker
+    res = client.post(f"/api/cases/{CASE}/blockers", json={
+        "reason": "po_missing",
+        "source": "buyer_said",
+        "note": "Accounts team asked for PO number",
+        "invoice_id": INV114,
+    })
+    assert res.status_code == 201, res.text
+    blk = res.json()
+    assert blk["reason"] == "po_missing"
+    assert blk["source"] == "buyer_said"
+    assert blk["reported_on"] is not None
+
+    # 2. List blockers
+    list_res = client.get(f"/api/cases/{CASE}/blockers")
+    assert list_res.status_code == 200
+    ids = [b["id"] for b in list_res.json()]
+    assert blk["id"] in ids
+
+    # 3. Patch blocker
+    patch_res = client.patch(f"/api/blockers/{blk['id']}", json={
+        "resolved_on": "2026-10-25",
+        "note": "PO number supplied and acknowledged",
+    })
+    assert patch_res.status_code == 200
+    assert patch_res.json()["resolved_on"] == "2026-10-25"
+    assert patch_res.json()["note"] == "PO number supplied and acknowledged"
+
+    # 4. Draft generation for blocker
+    evaluate(client)
+    draft_res = client.post(f"/api/cases/{CASE}/drafts", json={
+        "kind": "fix_blocker_po"
+    })
+    assert draft_res.status_code == 201
+    draft = draft_res.json()
+    assert "Purchase Order number" in draft["body"]
+
+    # 5. Delete blocker
+    del_res = client.delete(f"/api/blockers/{blk['id']}")
+    assert del_res.status_code == 200
+    assert client.delete(f"/api/blockers/{blk['id']}").status_code == 404
+

@@ -68,4 +68,25 @@ describe("api client", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual({ as_of: "2026-10-25" });
   });
+
+  it("handles payment blockers api calls", async () => {
+    let fn = mockFetch(200, [{ id: "b1", reason: "po_missing" }]);
+    await api.listBlockers("c1");
+    expect(fn.mock.calls[0][0]).toBe("http://api.test/api/cases/c1/blockers");
+
+    fn = mockFetch(201, { id: "b1", reason: "po_missing" });
+    await api.addBlocker("c1", { reason: "po_missing" });
+    expect(fn.mock.calls[0][0]).toBe("http://api.test/api/cases/c1/blockers");
+    expect(fn.mock.calls[0][1].method).toBe("POST");
+
+    fn = mockFetch(200, { id: "b1", resolved_on: "2026-10-25" });
+    await api.patchBlocker("b1", { resolved_on: "2026-10-25" });
+    expect(fn.mock.calls[0][0]).toBe("http://api.test/api/blockers/b1");
+    expect(fn.mock.calls[0][1].method).toBe("PATCH");
+
+    fn = mockFetch(200, { ok: true });
+    await api.deleteBlocker("b1");
+    expect(fn.mock.calls[0][0]).toBe("http://api.test/api/blockers/b1");
+    expect(fn.mock.calls[0][1].method).toBe("DELETE");
+  });
 });

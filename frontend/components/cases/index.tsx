@@ -13,7 +13,15 @@ import type {
 const msg = (e: unknown) => (e instanceof ApiError ? e.message : "Something went wrong.");
 const STEP_FOR: Partial<Record<DraftKind, number>> = { nudge: 1, firm: 2, demand: 3 };
 const DRAFT_LABEL: Record<DraftKind, string> = {
-  acceptance_confirm: "Receipt confirmation", nudge: "Friendly nudge", firm: "Firm reminder", demand: "Formal demand",
+  acceptance_confirm: "Receipt confirmation",
+  nudge: "Friendly nudge",
+  firm: "Firm reminder",
+  demand: "Formal demand",
+  fix_blocker_po: "Revised invoice quoting PO",
+  fix_blocker_grn: "Signed challan for GRN entry",
+  fix_blocker_amount: "Amount / GST reconciliation",
+  resolve_dispute: "Quality objection response",
+  fix_blocker: "Blocker resolution message",
 };
 
 // ---------------------------------------------------------------- recovery journey
@@ -29,6 +37,7 @@ const STAGES = [
 const CURRENT: Record<string, number> = {
   close_case: 0, wait_until_due: 0, nudge: 1, confirm_receipt: 1, resolve_dispute: 2, fix_mismatch: 2,
   complete_facts: 2, await_promise: 3, firm: 4, demand: 4, collect_evidence: 5, prepare_odr: 6, odr: 6,
+  fix_blocker_po: 2, fix_blocker_grn: 2, fix_blocker_amount: 2, fix_blocker: 2,
 };
 
 export function RecoveryJourney({ ev }: { ev: Evaluation }) {
@@ -36,7 +45,7 @@ export function RecoveryJourney({ ev }: { ev: Evaluation }) {
   const done = [
     ev.bucket.startsWith("overdue"),
     maxStep >= 1,
-    ev.followups.some((f) => f.reply_received) || ev.promises.length > 0,
+    ev.followups.some((f) => f.reply_received) || ev.promises.length > 0 || (ev.blockers?.length ?? 0) > 0,
     ev.promises.length > 0,
     maxStep >= 2,
     ev.readiness.odr_ready,
@@ -510,3 +519,4 @@ export function CaseFactsForm({ c, onChange }: { c: CaseDetail; onChange: () => 
 }
 
 export { ShareWithAdviserCard } from "./ShareWithAdviserCard";
+export { BlockersCard } from "./BlockersCard";

@@ -22,7 +22,8 @@ from ..evaluate import _jsonable
 from ..schemas import (EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
                        CalculateIn, DraftIn, InvoicePatch, MilestoneIn, MilestonePatch, NoteIn,
-                       PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn)
+                       PromiseExtractIn, PromiseIn, SimMessageIn, LegalAskIn, CaseShareIn,
+                       BlockerIn, BlockerPatch)
 from ..sim import handle_sim_message
 from ..store import Store
 
@@ -412,6 +413,48 @@ def patch_followup(followup_id: str, body: FollowupPatch, store: Store = Depends
         raise HTTPException(404, "follow-up not found")
     _own_case(store, fu["case_id"], bid)
     return store.update("followups", followup_id, {"reply_received": body.reply_received})
+
+
+# ---------------------------------------------------------------- payment blockers
+@router.post("/cases/{case_id}/blockers", status_code=201)
+def add_blocker(case_id: str, body: BlockerIn, store: Store = Depends(get_store),
+                bid: str = Depends(current_business_id)):
+    """The supplier records the reason the buyer gave for not paying."""
+    _own_case(store, case_id, bid)
+    data = _jsonify(body)
+    if not data.get("reported_on"):
+        data["reported_on"] = date.today().isoformat()
+    return store.insert("payment_blockers", {"case_id": case_id, **data})
+
+
+@router.get("/cases/{case_id}/blockers")
+def list_blockers(case_id: str, store: Store = Depends(get_store),
+                  bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    blockers = store.select("payment_blockers", case_id=case_id)
+    return sorted(blockers, key=lambda b: str(b.get("reported_on", "")), reverse=True)
+
+
+@router.patch("/blockers/{blocker_id}")
+def patch_blocker(blocker_id: str, body: BlockerPatch, store: Store = Depends(get_store),
+                  bid: str = Depends(current_business_id)):
+    b = store.get("payment_blockers", blocker_id)
+    if b is None:
+        raise HTTPException(404, "payment blocker not found")
+    _own_case(store, b["case_id"], bid)
+    patch = {k: v for k, v in _jsonify(body).items() if v is not None}
+    return store.update("payment_blockers", blocker_id, patch)
+
+
+@router.delete("/blockers/{blocker_id}")
+def delete_blocker(blocker_id: str, store: Store = Depends(get_store),
+                   bid: str = Depends(current_business_id)):
+    b = store.get("payment_blockers", blocker_id)
+    if b is None:
+        raise HTTPException(404, "payment blocker not found")
+    _own_case(store, b["case_id"], bid)
+    store.delete("payment_blockers", blocker_id)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- drafts
