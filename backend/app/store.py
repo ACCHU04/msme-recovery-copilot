@@ -96,6 +96,12 @@ DEMO_ROWS: dict[str, list[Row]] = {
             "name": "Apex Pumps and Motors Ltd", "gstin": "29AAACA6521K1ZN",
             "is_cpse": False, "relationship_importance": "medium",
         },
+        {
+            "id": "78000000-0000-4000-8000-000000000002",
+            "business_id": "11111111-1111-1111-1111-111111111111",
+            "name": "Deccan Agro Exports Pvt Ltd", "gstin": "36AAECD5517F1Z9",
+            "is_cpse": False, "relationship_importance": "medium",
+        },
     ],
     "cases": [
         {
@@ -154,6 +160,14 @@ DEMO_ROWS: dict[str, list[Row]] = {
             "contract_date": "2026-09-25", "status": "active", "ladder_step": 0,
             "allocation": "interest_first", "po_amount": "240000.00", "dispute_reason": "none",
         },
+        # Scenario 8: the PO says "payment 90 days"; s.15 caps it at 45 days from acceptance.
+        {
+            "id": "78000000-0000-4000-8000-000000000003",
+            "business_id": "11111111-1111-1111-1111-111111111111",
+            "buyer_id": "78000000-0000-4000-8000-000000000002",
+            "contract_date": "2026-06-15", "status": "active", "ladder_step": 1,
+            "allocation": "interest_first", "po_amount": "180000.00", "dispute_reason": "none",
+        },
     ],
     "invoices": [
         {"id": "44444444-4444-4444-4444-444444444441",
@@ -204,6 +218,10 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "case_id": "77000000-0000-4000-8000-000000000003", "number": "INV-204",
          "invoice_date": "2026-10-12", "amount": "90000.00", "delivery_date": "2026-10-13",
          "agreed_due_date": "2026-11-12", "objection_date": None, "objection_removed_date": None},
+        {"id": "78000000-0000-4000-8000-000000000004",
+         "case_id": "78000000-0000-4000-8000-000000000003", "number": "INV-162",
+         "invoice_date": "2026-06-20", "amount": "180000.00", "delivery_date": "2026-06-22",
+         "agreed_due_date": "2026-09-20", "objection_date": None, "objection_removed_date": None},
     ],
     "payments": [
         {"id": "55555555-5555-5555-5555-555555555551",
@@ -249,7 +267,9 @@ DEMO_ROWS: dict[str, list[Row]] = {
       + _ev_rows("76000000-0000-4000-8000-00000000001",
                  "76000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
       + _ev_rows("77000000-0000-4000-8000-00000000001",
-                 "77000000-0000-4000-8000-000000000003", _ALL_EVIDENCE),
+                 "77000000-0000-4000-8000-000000000003", _ALL_EVIDENCE)
+      + _ev_rows("78000000-0000-4000-8000-00000000001",
+                 "78000000-0000-4000-8000-000000000003", _ALL_EVIDENCE),
     "calculations": [], "drafts": [], "conversations": [], "inbound_messages": [],
     "promises": [
         {"id": "73000000-0000-4000-8000-000000000006",
@@ -286,6 +306,10 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "case_id": "75000000-0000-4000-8000-000000000003",
          "step": 1, "sent_on": "2026-10-21", "reply_received": True,
          "note": "Gentle reminder sent; accounts team confirmed NEFT scheduled for 28 Oct."},
+        {"id": "78000000-0000-4000-8000-000000000006",
+         "case_id": "78000000-0000-4000-8000-000000000003",
+         "step": 1, "sent_on": "2026-09-25", "reply_received": True,
+         "note": "Buyer replied: 'Our PO terms are 90 days; payment will be processed in the October run.'"},
     ],
     # Planned deliveries of the demo PO: together they make up the ₹2,75,000 order.
     "milestones": [

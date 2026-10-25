@@ -390,6 +390,52 @@ insert into evidence_items (id, case_id, kind, status) values
 on conflict (case_id, kind) do update set
   status = excluded.status;
 
+-- Scenario 8: Agreed credit period longer than the law allows (Deccan Agro Exports Pvt Ltd).
+-- UI/Copilot demo: the PO says "payment 90 days" (agreed date 20 Sep 2026), but Section 15
+-- caps any agreed period at 45 days from acceptance, so payment was due by 6 Aug 2026 and
+-- interest runs from 7 Aug. The buyer's reply quoting its 90-day terms is in the follow-ups.
+insert into buyers (id, business_id, name, gstin, is_cpse, relationship_importance)
+values ('78000000-0000-4000-8000-000000000002', '11111111-1111-1111-1111-111111111111',
+        'Deccan Agro Exports Pvt Ltd', '36AAECD5517F1Z9', false, 'medium')
+on conflict (id) do update set
+  business_id = excluded.business_id, name = excluded.name, gstin = excluded.gstin,
+  is_cpse = excluded.is_cpse, relationship_importance = excluded.relationship_importance;
+
+insert into cases (id, business_id, buyer_id, contract_date, status, ladder_step, allocation, po_amount, dispute_reason)
+values ('78000000-0000-4000-8000-000000000003', '11111111-1111-1111-1111-111111111111',
+        '78000000-0000-4000-8000-000000000002', '2026-06-15', 'active', 1, 'interest_first', 180000.00, 'none')
+on conflict (id) do update set
+  business_id = excluded.business_id, buyer_id = excluded.buyer_id, contract_date = excluded.contract_date,
+  status = excluded.status, ladder_step = excluded.ladder_step, allocation = excluded.allocation,
+  po_amount = excluded.po_amount, dispute_reason = excluded.dispute_reason;
+
+insert into invoices (id, case_id, number, invoice_date, amount, delivery_date, agreed_due_date,
+                      objection_date, objection_removed_date)
+values ('78000000-0000-4000-8000-000000000004', '78000000-0000-4000-8000-000000000003',
+        'INV-162', '2026-06-20', 180000.00, '2026-06-22', '2026-09-20', null, null)
+on conflict (id) do update set
+  case_id = excluded.case_id, number = excluded.number, invoice_date = excluded.invoice_date,
+  amount = excluded.amount, delivery_date = excluded.delivery_date, agreed_due_date = excluded.agreed_due_date,
+  objection_date = excluded.objection_date, objection_removed_date = excluded.objection_removed_date;
+
+insert into followups (id, case_id, step, sent_on, reply_received, note)
+values ('78000000-0000-4000-8000-000000000006', '78000000-0000-4000-8000-000000000003',
+        1, '2026-09-25', true, 'Buyer replied: ''Our PO terms are 90 days; payment will be processed in the October run.''')
+on conflict (id) do update set
+  case_id = excluded.case_id, step = excluded.step, sent_on = excluded.sent_on,
+  reply_received = excluded.reply_received, note = excluded.note;
+
+insert into evidence_items (id, case_id, kind, status) values
+  ('78000000-0000-4000-8000-000000000011', '78000000-0000-4000-8000-000000000003', 'po', 'have'),
+  ('78000000-0000-4000-8000-000000000012', '78000000-0000-4000-8000-000000000003', 'invoice', 'have'),
+  ('78000000-0000-4000-8000-000000000013', '78000000-0000-4000-8000-000000000003', 'delivery_proof', 'have'),
+  ('78000000-0000-4000-8000-000000000014', '78000000-0000-4000-8000-000000000003', 'acceptance_reply', 'have'),
+  ('78000000-0000-4000-8000-000000000015', '78000000-0000-4000-8000-000000000003', 'ledger', 'have'),
+  ('78000000-0000-4000-8000-000000000016', '78000000-0000-4000-8000-000000000003', 'communications', 'have'),
+  ('78000000-0000-4000-8000-000000000017', '78000000-0000-4000-8000-000000000003', 'udyam_cert', 'have')
+on conflict (case_id, kind) do update set
+  status = excluded.status;
+
 -- -----------------------------------------------------------------------------
 -- MANUAL ACCOUNT LINKING (do not automate; run in Supabase SQL Editor only for
 -- your explicit test supplier account after registering and verifying email):

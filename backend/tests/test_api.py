@@ -692,3 +692,19 @@ def test_notes_newest_first_and_cleaned_up_with_invoice(client):
     store = client.app.state.store
     assert store.select("invoice_notes", invoice_id=INV114) == []
     assert store.get("milestones", MS1)["invoice_id"] is None   # milestone kept, link removed
+
+
+def test_firm_and_demand_mention_the_buyers_tax_deduction(client):
+    evaluate(client)
+    for kind in ("firm", "demand"):
+        body = draft(client, kind).json()["body"]
+        assert "Section 43B(h)" in body and "Section 37(2)(g)" in body, kind
+    assert "43B" not in draft(client, "nudge").json()["body"]
+
+
+def test_no_tax_line_when_eligibility_unsettled(client):
+    client.post("/api/businesses", json={"name": "Sri Lakshmi Packaging", "size": "micro",
+                                         "activity": "manufacturing", "udyam_registered": True,
+                                         "udyam_reg_date": "2026-03-01"})
+    evaluate(client)
+    assert "43B" not in draft(client, "firm").json()["body"]

@@ -10,6 +10,14 @@ from decimal import Decimal
 
 KINDS = ("acceptance_confirm", "nudge", "firm", "demand")
 
+# Income-tax point for the buyer (a reason to pay, not a threat). s.43B(h) of the 1961 Act
+# applies up to tax year 2025-26; from 2026-27 the same rule is s.37(2)(g) of the 2025 Act.
+TAX_LINE = ("As you may know, under Section 43B(h) of the Income-tax Act, 1961 (now Section "
+            "37(2)(g) of the Income-tax Act, 2025), an amount owed to a micro or small "
+            "enterprise and paid after the time allowed under Section 15 of the MSMED Act can "
+            "be claimed as an expense only in the year it is actually paid. Paying on time "
+            "protects your tax deduction.")
+
 
 def _inr(x) -> str:
     """Indian digit grouping: 246072.61 -> Rs 2,46,072.61"""
@@ -71,8 +79,9 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                          f"accrued as of {_d(outputs['as_of'])}." if eligible and interest > 0
                          else "")
         amount = total if eligible else unpaid_simple
+        tax = f"\n\n{TAX_LINE}" if eligible else ""
         body = (f"Hello {buyer_name} team,\n\n{numbers} are past their due dates."
-                f"{promise_line}{interest_line}\n\nPlease arrange payment of {_inr(amount)} "
+                f"{promise_line}{interest_line}{tax}\n\nPlease arrange payment of {_inr(amount)} "
                 f"by {_d(pay_by)}. If there is any issue with the invoices, please tell us so "
                 f"we can resolve it.\n\nRegards,\n{business_name}")
     else:  # demand
@@ -89,7 +98,7 @@ def build_draft(kind: str, outputs: dict, business_name: str, buyer_name: str,
                 f"invoices from {business_name} remain unpaid beyond the period allowed "
                 f"under Section 15:\n{lines}\n\nAs of {_d(outputs['as_of'])}, the amount due "
                 f"is {_inr(total)}, including compound interest of {_inr(interest)} under "
-                f"Section 16. A month-by-month statement is attached.\n\nWe request payment "
+                f"Section 16. A month-by-month statement is attached.\n\n{TAX_LINE}\n\nWe request payment "
                 f"by {_d(pay_by)}. We value our business relationship and would prefer to "
                 f"settle this directly.\n\nYours faithfully,\n{business_name}")
         caution = "Review with a professional before sending a formal demand."
