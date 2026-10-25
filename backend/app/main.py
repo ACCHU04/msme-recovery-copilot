@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .files import build_file_store
 from .api.routes import router
 from .config import Settings, get_settings
 from .legal_ai import GeminiClient, RateLimiter
@@ -31,6 +32,7 @@ def create_app(settings: Settings | None = None, store: Store | None = None) -> 
     app = FastAPI(title="Settle45 API (LS-03)", version="0.1.0")
     app.state.settings = settings
     app.state.store = store or build_store(settings)
+    app.state.files = build_file_store(settings)   # B2 evidence files; None when turned off
     # AI legal Q&A: off (prepared answers only) unless GEMINI_API_KEY is set.
     app.state.llm = GeminiClient(settings.gemini_api_key, settings.gemini_model) if settings.gemini_api_key else None
     app.state.llm_limiter = RateLimiter()

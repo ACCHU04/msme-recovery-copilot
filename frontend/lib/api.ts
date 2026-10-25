@@ -1,7 +1,7 @@
 import type {
   AdviserCase, AdviserProfile, BuyerInvoice, CaseShare,
   Business, CalcResult, CaseDetail, CaseSummary, Draft, DraftKind, Evaluation, EvidenceKind,
-  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders } from "@/types/api";
+  EvidenceStatus, Followup, InvoiceDetail, InvoiceNote, InvoiceRow, DocumentCheck, LegalAnswer, Milestone, PaymentBlocker, PromiseCandidate, RateRow, SettlementOption, CashFlow, ConfirmationLink, QRResult, Reminders, EvidenceFile, EvidenceFiles } from "@/types/api";
 
 import { authEnabled } from "@/lib/auth/config";
 
@@ -150,7 +150,10 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
     const data = await res.json().catch(() => null);
     throw new ApiError(res.status, typeof data?.detail === "string" ? data.detail : STATUS_MESSAGES[res.status] ?? STATUS_MESSAGES[500]);
   }
-  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const cd = res.headers.get("content-disposition") ?? "";
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(cd)?.[1];
+  let name = /filename="([^"]+)"/.exec(cd)?.[1] ?? fallbackName;
+  if (utf8) { try { name = decodeURIComponent(utf8); } catch { /* keep the ASCII name */ } }
   const url = URL.createObjectURL(await res.blob());
   const a = document.createElement("a");
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -252,6 +255,10 @@ export const api = {
     request<QRResult>("/api/documents/qr", { method: "POST", body: { text, invoice_id: invoiceId ?? null } }),
   cashFlow: () => request<CashFlow>("/api/cashflow"),
   reminders: () => request<Reminders>("/api/reminders"),
+  listFiles: (caseId: string) => request<EvidenceFiles>(`/api/cases/${caseId}/files`),
+  uploadFile: (caseId: string, form: FormData) =>
+    request<EvidenceFile>(`/api/cases/${caseId}/files`, { method: "POST", body: form, timeoutMs: 60000 }),
+  deleteFile: (fileId: string) => request<{ deleted: string }>(`/api/files/${fileId}`, { method: "DELETE" }),
   dismissReminder: (key: string) =>
     request<{ dismissed: string }>("/api/reminders/dismiss", { method: "POST", body: { key } }),
   emailReminders: () =>

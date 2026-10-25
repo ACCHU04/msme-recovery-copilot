@@ -54,6 +54,7 @@ def _styles():
         "small": ParagraphStyle("s", parent=base, fontSize=7.5, leading=10, textColor=colors.HexColor("#5b6678")),
         "cell": ParagraphStyle("c", parent=base, fontSize=8, leading=10),
         "num": ParagraphStyle("n", parent=base, fontSize=8, leading=10, alignment=TA_RIGHT),
+        "mono": ParagraphStyle("m", parent=base, fontName="Courier", fontSize=6.5, leading=8),
         "banner": ParagraphStyle("bn", parent=base, fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#9a5b00")),
     }
 
@@ -88,7 +89,8 @@ def _table(rows: list[list[Any]], widths: list[float], st: dict, header: bool = 
 
 def build_pack(case: dict, business: dict, buyer: dict, ev: dict, *, promises: list[dict],
                followups: list[dict], blockers: list[dict], notes: dict[str, list[dict]],
-               confirmations: list[dict], generated_on: date | None = None) -> bytes:
+               confirmations: list[dict], files: list[dict] | None = None,
+               generated_on: date | None = None) -> bytes:
     st = _styles()
     generated_on = generated_on or date.today()
     buf = io.BytesIO()
@@ -178,6 +180,17 @@ def build_pack(case: dict, business: dict, buyer: dict, ev: dict, *, promises: l
         S.append(_table([["Buyer confirmation link", "Answer", "By", "Note"]] + [
             [_d(c.get("used_at")), "Received in good order" if c.get("response") == "received_ok" else "Problem raised",
              c.get("responder_name") or "—", c.get("note") or "—"] for c in answered], [32, 40, 40, 62], st))
+
+    if files:
+        S.append(KeepTogether([
+            P("Files kept with this case", "h"),
+            P("Each file's SHA-256 fingerprint was recorded when it was uploaded. Anyone holding a copy "
+              "can recompute it to show the file is unchanged.", "small"), Spacer(1, 1.5 * mm),
+            _table([["File", "What it is", "Uploaded", "Size", "SHA-256"]] + [
+                [f["file_name"], EVIDENCE_LABEL.get(f.get("kind") or "", "Other"), _d(f.get("uploaded_at")),
+                 f"{max(1, round(int(f['size_bytes']) / 1024))} KB",
+                 Paragraph(" ".join(f["sha256"][i:i + 16] for i in range(0, 64, 16)), st["mono"])]
+                for f in files], [44, 30, 22, 14, 64], st, num_cols=(3,))]))
 
     # ---- promises, follow-ups, blockers
     if promises:

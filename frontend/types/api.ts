@@ -402,6 +402,24 @@ export interface ConfirmationLink {
   path?: string;
 }
 
+export interface EvidenceFile {
+  id: string;
+  case_id: string;
+  invoice_id: string | null;
+  kind: EvidenceKind | null;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  uploaded_at: string;
+}
+
+export interface EvidenceFiles {
+  enabled: boolean;
+  max_bytes: number;
+  files: EvidenceFile[];
+}
+
 export type ReminderKind = "due_soon" | "became_overdue" | "promise_due" | "promise_broken" | "no_reply";
 
 export interface Reminder {

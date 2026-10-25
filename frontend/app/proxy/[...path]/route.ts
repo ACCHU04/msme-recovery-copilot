@@ -46,12 +46,16 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
       headers,
       body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),   // binary-safe (file uploads)
       cache: "no-store",
-      signal: AbortSignal.timeout(req.nextUrl.pathname.includes("/documents/") ? 60000 : 30000),
+      signal: AbortSignal.timeout(/\/(documents|files)(\/|$)/.test(req.nextUrl.pathname) ? 60000 : 30000),
     });
     // Bytes, not text: responses can be files (the PDF evidence pack).
     const out: Record<string, string> = { "Content-Type": r.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" };
     const disposition = r.headers.get("content-disposition");
     if (disposition) out["Content-Disposition"] = disposition;
+    for (const h of ["x-content-sha256", "x-content-type-options"]) {
+      const v = r.headers.get(h);
+      if (v) out[h] = v;
+    }
     return new NextResponse(r.status === 204 ? null : await r.arrayBuffer(), { status: r.status, headers: out });
   } catch {
     return json(502, "Can't reach the server. Check that the backend is running.");

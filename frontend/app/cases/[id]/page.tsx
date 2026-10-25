@@ -9,6 +9,7 @@ import {
   BlockersCard, NextActionCard, PromisesPanel, ReadinessBar, SettlementCard, ShareWithAdviserCard,
 } from "@/components/cases";
 import { BucketBadge, Card, ErrorState, EstimateNote, inputClass, LoadingState, VerdictBadge } from "@/components/ui";
+import { EvidenceFilesCard } from "@/components/cases/EvidenceFiles";
 import { api, ApiError, downloadFile } from "@/lib/api";
 import { formatDate, formatINR, todayISO, totalsConsistent } from "@/lib/format";
 import { useAsync } from "@/lib/useAsync";
@@ -88,6 +89,7 @@ export default function CasePage() {
             <div className="space-y-6">
               <Card title="Evidence"><div className="mb-4"><ReadinessBar ev={ev} /></div>
                 <EvidenceChecklist caseId={id} evidence={c.evidence} onChange={reload} /></Card>
+              <EvidenceFilesCard caseId={id} onChange={reload} />
               <Card title="Messages sent"><FollowupLog ev={ev} onChange={reload} /></Card>
               <Card title="Case facts"><CaseFactsForm key={`${c.po_amount}-${c.dispute_reason}-${c.allocation}`} c={c} onChange={reload} /></Card>
               <ShareWithAdviserCard caseId={id} />

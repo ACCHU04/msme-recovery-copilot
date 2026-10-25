@@ -442,6 +442,7 @@ DEMO_ROWS: dict[str, list[Row]] = {
          "invoice_id": "44444444-4444-4444-4444-444444444442", "created_at": "2026-02-20T10:00:00+00:00"},
     ],
     "invoice_notes": [],
+    "evidence_files": [],   # B2: files kept with a case (bytes live in the file store)
     "reminder_dismissals": [],   # C1: reminders the owner hid
     "confirmation_links": [],   # C4: one-time links for buyers to confirm receipt
     "profiles": [

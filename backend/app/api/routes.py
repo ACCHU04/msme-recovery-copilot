@@ -1,7 +1,9 @@
 """All /api routes. Thin: validate, check ownership, call store / evaluate."""
 from __future__ import annotations
 
-from datetime import date
+import uuid
+from datetime import date, datetime, timezone
+from urllib.parse import quote
 from decimal import Decimal
 
 import httpx
@@ -18,7 +20,7 @@ from recovery_engine import Payment
 
 from ..drafts import build_draft
 from ..invoices import list_invoices, rate_table, what_if
-from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, legal_ai, reminders as reminders_mod
+from .. import cashflow as cashflow_mod, doc_check, einvoice_qr, evidence_pack, files as files_mod, legal_ai, reminders as reminders_mod
 from ..evaluate import _jsonable
 from ..schemas import (ConfirmationIn, QRCheckIn, ReminderDismissIn, EVIDENCE_KINDS, BusinessIn, CaseIn, CasePatch, EvaluateIn,
                        EvidenceIn, FollowupIn, FollowupPatch, InvoiceIn, PaymentIn,
@@ -335,6 +337,116 @@ def set_evidence(case_id: str, kind: str, body: EvidenceIn, store: Store = Depen
     return store.upsert("evidence_items", {"case_id": case_id, "kind": kind,
                                            "status": body.status}, ["case_id", "kind"])
 
+
+
+# ---------------------------------------------------------------- B2 evidence files
+_FILE_FIELDS = ("id", "case_id", "invoice_id", "kind", "file_name", "content_type", "size_bytes",
+                "sha256", "uploaded_at")
+
+
+def _file_out(row: dict) -> dict:
+    return {k: row.get(k) for k in _FILE_FIELDS}
+
+
+def _file_store(request: Request):
+    fs = getattr(request.app.state, "files", None)
+    if fs is None:
+        raise HTTPException(503, "File storage is turned off on this server. You can still mark evidence as held.")
+    return fs
+
+
+def _own_file(store: Store, file_id: str, bid: str) -> dict:
+    row = store.get("evidence_files", file_id)
+    if row is None:
+        raise HTTPException(404, "file not found")
+    _own_case(store, row["case_id"], bid)
+    return row
+
+
+@router.get("/cases/{case_id}/files")
+def list_files(case_id: str, request: Request, store: Store = Depends(get_store),
+               bid: str = Depends(current_business_id)):
+    _own_case(store, case_id, bid)
+    rows = sorted(store.select("evidence_files", case_id=case_id),
+                  key=lambda r: str(r.get("uploaded_at")), reverse=True)
+    return {"enabled": getattr(request.app.state, "files", None) is not None,
+            "max_bytes": files_mod.MAX_BYTES, "files": [_file_out(r) for r in rows]}
+
+
+@router.post("/cases/{case_id}/files", status_code=201)
+def upload_file(case_id: str, request: Request, file: UploadFile = File(...),
+                kind: str | None = Form(None), invoice_id: str | None = Form(None),
+                store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
+    """Keep a PDF or photo with the case. The bytes are checked (not the browser's label),
+    hashed with SHA-256, and stored privately. With a kind, that evidence is marked as held."""
+    case = _own_case(store, case_id, bid)
+    fs = _file_store(request)
+    if kind is not None and kind not in EVIDENCE_KINDS:
+        raise HTTPException(422, f"Unknown evidence type; use one of {', '.join(EVIDENCE_KINDS)}.")
+    if invoice_id is not None:
+        inv = store.get("invoices", invoice_id)
+        if inv is None or inv["case_id"] != case_id:
+            raise HTTPException(404, "invoice not found in this case")
+    data = file.file.read(files_mod.MAX_BYTES + 1)
+    if not data:
+        raise HTTPException(422, "The file is empty.")
+    if len(data) > files_mod.MAX_BYTES:
+        raise HTTPException(413, "That file is larger than 10 MB. Use a smaller photo or PDF.")
+    mime = doc_check.sniff_mime(data)
+    if mime is None:
+        raise HTTPException(415, "Upload a PDF, or a JPG, PNG or WebP photo.")
+    digest = files_mod.sha256(data)
+    existing = store.select("evidence_files", case_id=case_id)
+    same = next((r for r in existing if r["sha256"] == digest), None)
+    if same:
+        raise HTTPException(409, f"This file is already kept with the case as \u201c{same['file_name']}\u201d.")
+    if len(existing) >= files_mod.MAX_FILES_PER_CASE:
+        raise HTTPException(409, f"A case can keep up to {files_mod.MAX_FILES_PER_CASE} files. Remove one first.")
+    file_id = str(uuid.uuid4())
+    path = f"{case['business_id']}/{case_id}/{file_id}"
+    try:
+        fs.put(path, data, mime)
+    except files_mod.FileStoreError:
+        raise HTTPException(502, "The file could not be stored. Try again in a moment.")
+    row = store.insert("evidence_files", {
+        "id": file_id, "case_id": case_id, "invoice_id": invoice_id, "kind": kind,
+        "file_name": files_mod.clean_name(file.filename, mime), "content_type": mime,
+        "size_bytes": len(data), "sha256": digest, "storage_path": path,
+        "uploaded_at": datetime.now(timezone.utc).isoformat()})
+    if kind:
+        store.upsert("evidence_items", {"case_id": case_id, "kind": kind, "status": "have"}, ["case_id", "kind"])
+    return _file_out(row)
+
+
+@router.get("/files/{file_id}/download")
+def download_file(file_id: str, request: Request, store: Store = Depends(get_store),
+                  bid: str = Depends(current_business_id)):
+    row = _own_file(store, file_id, bid)
+    fs = _file_store(request)
+    try:
+        data = fs.get(row["storage_path"])
+    except files_mod.FileStoreError:
+        raise HTTPException(502, "The file could not be fetched from storage.")
+    if files_mod.sha256(data) != row["sha256"]:
+        raise HTTPException(409, "This file no longer matches the copy recorded at upload. Do not rely on it.")
+    return Response(data, media_type=row["content_type"], headers={
+        "Content-Disposition": f"attachment; filename=\"{files_mod.ascii_name(row['file_name'])}\"; "
+                               f"filename*=UTF-8''{quote(row['file_name'])}",
+        "X-Content-SHA256": row["sha256"], "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store"})
+
+
+@router.delete("/files/{file_id}")
+def delete_file(file_id: str, request: Request, store: Store = Depends(get_store),
+                bid: str = Depends(current_business_id)):
+    """Removes the file. The evidence checklist is left as it is; change it there if needed."""
+    row = _own_file(store, file_id, bid)
+    try:
+        _file_store(request).delete(row["storage_path"])
+    except files_mod.FileStoreError:
+        raise HTTPException(502, "The file could not be removed from storage. Try again.")
+    store.delete("evidence_files", file_id)
+    return {"deleted": file_id}
 
 # ---------------------------------------------------------------- evaluate, settlement
 @router.post("/cases/{case_id}/evaluate")
@@ -1006,7 +1118,8 @@ def evidence_pack_pdf(case_id: str, as_of: date | None = None, store: Store = De
         followups=sorted(store.select("followups", case_id=case_id), key=lambda f: str(f.get("sent_on"))),
         blockers=sorted(store.select("payment_blockers", case_id=case_id), key=lambda b: str(b.get("reported_on"))),
         notes=notes,
-        confirmations=[c for c in store.select("confirmation_links", invoice_id=inv_ids)] if inv_ids else [])
+        confirmations=[c for c in store.select("confirmation_links", invoice_id=inv_ids)] if inv_ids else [],
+        files=sorted(store.select("evidence_files", case_id=case_id), key=lambda f: str(f.get("uploaded_at"))))
     name = "".join(ch if ch.isalnum() else "-" for ch in (case.get("buyer") or {}).get("name", "case"))[:40]
     return Response(pdf, media_type="application/pdf", headers={
         "Content-Disposition": f'attachment; filename="evidence-pack-{name}.pdf"', "Cache-Control": "no-store"})

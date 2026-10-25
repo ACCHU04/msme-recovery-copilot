@@ -391,3 +391,21 @@ def test_reminder_dismissals_owner_read_only(url):
             c.execute("insert into reminder_dismissals (business_id, key) values (%s, 'due_soon:x2')", (biz,))
     with as_user(url, other) as c:
         assert c.execute("select count(*) from reminder_dismissals").fetchone()[0] == 0
+
+
+def test_evidence_files_owner_read_only(url):
+    uid, case, inv = _supplier_with_case(url)
+    other = signup(url, "supplier")
+    row = "(case_id, file_name, content_type, size_bytes, sha256, storage_path) values (%s, 'po.pdf', 'application/pdf', 10, %s, %s)"
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("insert into evidence_files " + row, (case, "c" * 64, f"x/{case}/1"))
+        with pytest.raises(errors.CheckViolation):              # sha256 must be 64 hex characters
+            c.execute("insert into evidence_files " + row, (case, "not-a-hash", f"x/{case}/2"))
+        with pytest.raises(errors.UniqueViolation):             # the same file twice in one case
+            c.execute("insert into evidence_files " + row, (case, "c" * 64, f"x/{case}/3"))
+    with as_user(url, uid) as c:
+        assert c.execute("select count(*) from evidence_files").fetchone()[0] == 1
+        with pytest.raises(errors.InsufficientPrivilege):      # written only by the backend
+            c.execute("delete from evidence_files")
+    with as_user(url, other) as c:
+        assert c.execute("select count(*) from evidence_files").fetchone()[0] == 0

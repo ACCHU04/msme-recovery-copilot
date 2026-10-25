@@ -1024,3 +1024,91 @@ def test_reminder_email_only_when_configured(secure_client, monkeypatch):
     assert sent["url"] == "https://api.resend.com/emails" and sent["json"]["to"] == ["owner@example.com"]
     assert "INV-198 falls due in 3 days" in sent["json"]["text"] and "re_test" in sent["headers"]["Authorization"]
     assert secure_client.get("/api/reminders", headers=bearer(token(BUYER))).status_code == 403
+
+
+# ---------------------------------------------------------------- B2 evidence files
+PDF_BYTES = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+
+
+def _upload(client, data=PDF_BYTES, name="challan.pdf", case=CASE, **form):
+    return client.post(f"/api/cases/{case}/files", files={"file": (name, data, "application/octet-stream")},
+                       data=form)
+
+
+def test_file_upload_list_download(client):
+    import hashlib
+    r = _upload(client, kind="delivery_proof", invoice_id=INV114)
+    assert r.status_code == 201, r.text
+    f = r.json()
+    assert f["file_name"] == "challan.pdf" and f["content_type"] == "application/pdf"
+    assert f["sha256"] == hashlib.sha256(PDF_BYTES).hexdigest() and f["size_bytes"] == len(PDF_BYTES)
+    assert "storage_path" not in f
+    ev = {e["kind"]: e["status"] for e in client.get(f"/api/cases/{CASE}").json()["evidence"]}
+    assert ev["delivery_proof"] == "have"          # a kind marks that evidence as held
+    listed = client.get(f"/api/cases/{CASE}/files").json()
+    assert listed["enabled"] is True and [x["id"] for x in listed["files"]] == [f["id"]]
+    d = client.get(f"/api/files/{f['id']}/download")
+    assert d.status_code == 200 and d.content == PDF_BYTES
+    assert d.headers["x-content-sha256"] == f["sha256"] and d.headers["x-content-type-options"] == "nosniff"
+    assert 'filename="challan.pdf"' in d.headers["content-disposition"]
+
+
+def test_file_upload_rejections(client):
+    assert _upload(client).status_code == 201
+    dup = _upload(client, name="again.pdf")
+    assert dup.status_code == 409 and "challan.pdf" in dup.json()["detail"]
+    assert _upload(client, data=b"<html>not a pdf</html>", name="x.pdf").status_code == 415
+    assert _upload(client, data=b"", name="x.pdf").status_code == 422
+    big = b"%PDF" + b"0" * (10 * 1024 * 1024)
+    assert _upload(client, data=big, name="big.pdf").status_code == 413
+    assert _upload(client, data=PNG_BYTES, name="p.png", kind="passport").status_code == 422
+    other_inv = next(i["id"] for i in client.app.state.store.tables["invoices"] if i["case_id"] != CASE)
+    assert _upload(client, data=PNG_BYTES, name="p.png", invoice_id=other_inv).status_code == 404
+
+
+def test_file_names_are_cleaned(client):
+    f = _upload(client, data=PNG_BYTES, name="../../etc/passwd").json()
+    assert f["file_name"] == "passwd.png" and f["content_type"] == "image/png"
+    g = _upload(client, name="ಚಲನ್ ರಸೀದಿ.pdf").json()
+    cd = client.get(f"/api/files/{g['id']}/download").headers["content-disposition"]
+    assert "filename*=UTF-8''" in cd and '"' + "_" * 4 in cd   # ASCII fallback plus the real name
+
+
+def test_file_tamper_detected_and_delete(client):
+    f = _upload(client).json()
+    blobs = client.app.state.files.blobs
+    path = next(iter(blobs))
+    assert path.endswith(f["id"]) and CASE in path            # no user-chosen name in the path
+    blobs[path] = PDF_BYTES + b"changed"
+    assert client.get(f"/api/files/{f['id']}/download").status_code == 409
+    assert client.delete(f"/api/files/{f['id']}").json() == {"deleted": f["id"]}
+    assert blobs == {} and client.get(f"/api/cases/{CASE}/files").json()["files"] == []
+    assert client.get(f"/api/files/{f['id']}/download").status_code == 404
+
+
+def test_files_owner_only(secure_client):
+    h = bearer(token(OWNER))
+    f = secure_client.post(f"/api/cases/{CASE}/files", headers=h,
+                           files={"file": ("po.pdf", PDF_BYTES, "application/pdf")}).json()
+    s = bearer(token(STRANGER))
+    assert secure_client.get(f"/api/cases/{CASE}/files", headers=s).status_code == 404
+    assert secure_client.get(f"/api/files/{f['id']}/download", headers=s).status_code == 404
+    assert secure_client.delete(f"/api/files/{f['id']}", headers=s).status_code == 404
+    assert secure_client.get(f"/api/files/{f['id']}/download", headers=bearer(token(BUYER))).status_code == 403
+
+
+def test_files_turned_off(client):
+    client.app.state.files = None
+    assert client.get(f"/api/cases/{CASE}/files").json()["enabled"] is False
+    assert _upload(client).status_code == 503
+
+
+def test_evidence_pack_lists_files(client):
+    pypdf = pytest.importorskip("pypdf")
+    import io
+    f = _upload(client, kind="po", name="purchase-order.pdf").json()
+    r = client.get(f"/api/cases/{CASE}/evidence-pack.pdf?as_of=2026-10-26")
+    text = " ".join(p.extract_text() for p in pypdf.PdfReader(io.BytesIO(r.content)).pages)
+    assert "Files kept with this case" in text and "purchase-order.pdf" in text
+    assert f["sha256"][:16] in text
