@@ -59,9 +59,9 @@ export default function AdviserPage() {
                 {cases.map((c) => (
                   <tr key={c.case_id} className="hover:bg-slate-50">
                     <td className="p-3">
-                      <Link href={`/cases/${c.case_id}`} className="font-semibold text-brand-600 hover:underline">
+                      <span className="font-semibold text-slate-900">
                         {c.buyer_name}
-                      </Link>
+                      </span>
                       {c.max_days_overdue > 0 && (
                         <span className="block text-[11px] font-medium text-red-600">
                           {c.max_days_overdue} days overdue

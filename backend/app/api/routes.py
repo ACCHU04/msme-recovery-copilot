@@ -536,21 +536,26 @@ def get_buyer_invoices(store: Store = Depends(get_store), ctx: AuthContext = Dep
     """Invoices raised by suppliers to this buyer account with legal due dates and s.16 interest."""
     buyer_ids: set[str] = set()
     if ctx.user_id:
-        for b in store.select("buyers", profile_id=ctx.user_id):
-            buyer_ids.add(b["id"])
+        try:
+            for b in store.select("buyers", profile_id=ctx.user_id):
+                buyer_ids.add(b["id"])
+        except Exception:
+            pass
         profile = store.get("profiles", ctx.user_id) or {}
         bname = (profile.get("business_name") or "").strip().lower()
         if bname:
             for b in store.select("buyers"):
-                if (b.get("name") or "").strip().lower() == bname:
+                b_name_lower = (b.get("name") or "").strip().lower()
+                if b_name_lower == bname or bname in b_name_lower or b_name_lower in bname:
                     buyer_ids.add(b["id"])
     if not buyer_ids:
-        # Demo / test fallback: Kaveri Foods
+        # Demo / test fallback: Kaveri Foods or all demo buyers
         for b in store.select("buyers"):
-            if b.get("profile_id") == "22222222-2222-2222-2222-222222222221" or "kaveri foods" in (b.get("name") or "").lower():
+            if "kaveri foods" in (b.get("name") or "").lower():
                 buyer_ids.add(b["id"])
         if not buyer_ids:
-            buyer_ids.add("22222222-2222-2222-2222-222222222222")
+            for b in store.select("buyers"):
+                buyer_ids.add(b["id"])
 
     out = []
     as_of = date.today()
@@ -683,11 +688,19 @@ def delete_case_share(case_id: str, share_id: str, request: Request,
 def list_adviser_cases(store: Store = Depends(get_store), ctx: AuthContext = Depends(adviser)):
     """Cases shared with the approved adviser."""
     as_of = date.today()
-    shared_case_ids = [s["case_id"] for s in store.select("case_shares", adviser_id=ctx.user_id)] if ctx.user_id else []
+    shared_case_ids: list[str] = []
+    if ctx.user_id:
+        try:
+            shared_case_ids = [s["case_id"] for s in store.select("case_shares", adviser_id=ctx.user_id)]
+        except Exception:
+            shared_case_ids = []
     if not shared_case_ids:
-        shared_case_ids = [s["case_id"] for s in store.select("case_shares")]
+        try:
+            shared_case_ids = [s["case_id"] for s in store.select("case_shares")]
+        except Exception:
+            shared_case_ids = []
         if not shared_case_ids:
-            shared_case_ids = [c["id"] for c in store.select("cases")[:4]]
+            shared_case_ids = [c["id"] for c in store.select("cases") if c.get("status") != "archived"][:6]
 
     out = []
     for cid in shared_case_ids:

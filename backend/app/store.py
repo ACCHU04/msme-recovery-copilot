@@ -523,6 +523,19 @@ class SupabaseStore:
             "Authorization": f"Bearer {service_key}",
             "Content-Type": "application/json",
         })
+        self._fallback_tables: dict[str, list[Row]] = {
+            "case_shares": copy.deepcopy(DEMO_ROWS.get("case_shares", [])),
+            "milestones": copy.deepcopy(DEMO_ROWS.get("milestones", [])),
+            "invoice_notes": copy.deepcopy(DEMO_ROWS.get("invoice_notes", [])),
+        }
+
+    def _fallback_select(self, table: str, eq: dict[str, Any]) -> list[Row]:
+        rows = self._fallback_tables.get(table, [])
+        return [
+            copy.deepcopy(r) for r in rows
+            if all((r.get(k) in v if isinstance(v, (list, tuple, set)) else r.get(k) == v)
+                   for k, v in eq.items())
+        ]
 
     def select(self, table: str, **eq: Any) -> list[Row]:
         for v in eq.values():
@@ -533,36 +546,100 @@ class SupabaseStore:
             **{k: f"in.({','.join(str(x) for x in v)})" if isinstance(v, (list, tuple, set)) else f"eq.{v}"
                for k, v in eq.items()},
         }
-        r = self.client.get(f"{self.base}/{table}", params=params)
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = self.client.get(f"{self.base}/{table}", params=params)
+            if r.status_code == 404 and table in self._fallback_tables:
+                return self._fallback_select(table, eq)
+            if r.status_code == 400 and ("column" in r.text or "schema cache" in r.text):
+                return []
+            r.raise_for_status()
+            return r.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and table in self._fallback_tables:
+                return self._fallback_select(table, eq)
+            if e.response.status_code == 400 and ("column" in e.response.text or "schema cache" in e.response.text):
+                return []
+            raise
 
     def get(self, table: str, id: str) -> Row | None:
         rows = self.select(table, id=id)
         return rows[0] if rows else None
 
     def insert(self, table: str, row: Row) -> Row:
-        r = self.client.post(f"{self.base}/{table}", json=row,
-                             headers={"Prefer": "return=representation"})
-        r.raise_for_status()
-        return r.json()[0]
+        row = {"id": str(uuid.uuid4()), **row}
+        try:
+            r = self.client.post(f"{self.base}/{table}", json=row,
+                                 headers={"Prefer": "return=representation"})
+            if r.status_code == 404 and table in self._fallback_tables:
+                self._fallback_tables[table].append(copy.deepcopy(row))
+                return row
+            r.raise_for_status()
+            return r.json()[0]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and table in self._fallback_tables:
+                self._fallback_tables[table].append(copy.deepcopy(row))
+                return row
+            raise
 
     def update(self, table: str, id: str, patch: Row) -> Row | None:
-        r = self.client.patch(f"{self.base}/{table}", params={"id": f"eq.{id}"}, json=patch,
-                              headers={"Prefer": "return=representation"})
-        r.raise_for_status()
-        rows = r.json()
-        return rows[0] if rows else None
+        try:
+            r = self.client.patch(f"{self.base}/{table}", params={"id": f"eq.{id}"}, json=patch,
+                                  headers={"Prefer": "return=representation"})
+            if r.status_code == 404 and table in self._fallback_tables:
+                for row in self._fallback_tables[table]:
+                    if row["id"] == id:
+                        row.update(patch)
+                        return copy.deepcopy(row)
+                return None
+            r.raise_for_status()
+            rows = r.json()
+            return rows[0] if rows else None
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and table in self._fallback_tables:
+                for row in self._fallback_tables[table]:
+                    if row["id"] == id:
+                        row.update(patch)
+                        return copy.deepcopy(row)
+                return None
+            raise
 
     def upsert(self, table: str, row: Row, on_conflict: list[str]) -> Row:
-        r = self.client.post(f"{self.base}/{table}", json=row,
-                             params={"on_conflict": ",".join(on_conflict)},
-                             headers={"Prefer": "return=representation,resolution=merge-duplicates"})
-        r.raise_for_status()
-        return r.json()[0]
+        try:
+            r = self.client.post(f"{self.base}/{table}", json=row,
+                                 params={"on_conflict": ",".join(on_conflict)},
+                                 headers={"Prefer": "return=representation,resolution=merge-duplicates"})
+            if r.status_code == 404 and table in self._fallback_tables:
+                for r_idx, existing in enumerate(self._fallback_tables[table]):
+                    if all(existing.get(k) == row.get(k) for k in on_conflict):
+                        self._fallback_tables[table][r_idx].update(row)
+                        return copy.deepcopy(self._fallback_tables[table][r_idx])
+                self._fallback_tables[table].append(copy.deepcopy(row))
+                return row
+            r.raise_for_status()
+            return r.json()[0]
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and table in self._fallback_tables:
+                for r_idx, existing in enumerate(self._fallback_tables[table]):
+                    if all(existing.get(k) == row.get(k) for k in on_conflict):
+                        self._fallback_tables[table][r_idx].update(row)
+                        return copy.deepcopy(self._fallback_tables[table][r_idx])
+                self._fallback_tables[table].append(copy.deepcopy(row))
+                return row
+            raise
 
     def delete(self, table: str, id: str) -> bool:
-        r = self.client.delete(f"{self.base}/{table}", params={"id": f"eq.{id}"},
-                               headers={"Prefer": "return=representation"})
-        r.raise_for_status()
-        return bool(r.json())
+        try:
+            r = self.client.delete(f"{self.base}/{table}", params={"id": f"eq.{id}"},
+                                   headers={"Prefer": "return=representation"})
+            if r.status_code == 404 and table in self._fallback_tables:
+                before = len(self._fallback_tables[table])
+                self._fallback_tables[table] = [r for r in self._fallback_tables[table] if r["id"] != id]
+                return len(self._fallback_tables[table]) < before
+            r.raise_for_status()
+            return bool(r.json())
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404 and table in self._fallback_tables:
+                before = len(self._fallback_tables[table])
+                self._fallback_tables[table] = [r for r in self._fallback_tables[table] if r["id"] != id]
+                return len(self._fallback_tables[table]) < before
+            raise

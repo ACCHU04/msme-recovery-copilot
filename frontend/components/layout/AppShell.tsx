@@ -40,7 +40,7 @@ const BARE = ["/login", "/register", "/registered", "/forgot-password", "/reset-
 const isBare = (path: string) => BARE.some((p) => path === p || path.startsWith(p + "/")) || path.endsWith("/report");
 
 /** Demo mode: one fictional supplier, so the supplier pages plus the adviser preview. */
-const DEMO_HIDDEN = new Set(["/buyer", "/admin"]);
+const DEMO_HIDDEN = new Set(["/admin"]);
 
 function demoViewer(): Viewer | null {
   const s = getSession();
