@@ -28,7 +28,7 @@ class Settings:
     cors_origins: list[str]
     demo_business_id: str
     gemini_api_key: str | None = None     # server only; enables the AI legal Q&A
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
 
 def get_settings() -> Settings:
@@ -46,5 +46,5 @@ def get_settings() -> Settings:
             "CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
         demo_business_id=os.getenv("DEMO_BUSINESS_ID", DEMO_BUSINESS_ID),
         gemini_api_key=os.getenv("GEMINI_API_KEY") or None,
-        gemini_model=os.getenv("GEMINI_MODEL") or "gemini-3.8-flash",
+        gemini_model=os.getenv("GEMINI_MODEL") or "gemini-3.5-flash",
     )

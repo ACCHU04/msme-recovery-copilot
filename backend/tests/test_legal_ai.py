@@ -5,7 +5,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.legal_ai import GeminiClient, RateLimiter, ask, check_answer
 from app.main import create_app
 from app.store import MemoryStore
@@ -118,7 +118,13 @@ def test_rate_limiter():
 
 @pytest.fixture
 def api():
-    app = create_app(get_settings(), MemoryStore(seed=True))
+    s = get_settings()
+    settings = Settings(
+        store="memory", auth_mode="demo", supabase_url=None, supabase_service_key=None,
+        supabase_jwt_secret=None, cors_origins=["*"], demo_business_id=s.demo_business_id,
+        gemini_api_key=None, gemini_model=s.gemini_model,
+    )
+    app = create_app(settings, MemoryStore(seed=True))
     return TestClient(app)
 
 
