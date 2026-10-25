@@ -38,51 +38,105 @@ const STATUS_MESSAGES: Record<number, string> = {
   500: "Something went wrong on the server. Try again.",
 };
 
+interface CacheEntry {
+  data: unknown;
+  expiresAt: number;
+}
+
+const CACHE_TTL_MS = 30000;
+const cache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+export function clearApiCache() {
+  cache.clear();
+  inFlight.clear();
+}
+
 async function request<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? TIMEOUT_MS);
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
-  if (init.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  else if (DEMO_BUSINESS_ID) headers["X-Business-Id"] = DEMO_BUSINESS_ID;
+  const method = (init.method ?? "GET").toUpperCase();
+  const isGet = method === "GET";
+  const cacheKey = `${authToken ?? DEMO_BUSINESS_ID}:${path}`;
 
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}${path}`, {
-      method: init.method ?? "GET",
-      headers,
-      body: init.body === undefined ? undefined : isForm ? (init.body as FormData) : JSON.stringify(init.body),
-      signal: controller.signal,
-      cache: "no-store",
-    });
-  } catch (e) {
-    const aborted = e instanceof DOMException && e.name === "AbortError";
-    throw new ApiError(aborted ? 408 : 0, STATUS_MESSAGES[aborted ? 408 : 0]);
-  } finally {
-    clearTimeout(timer);
-  }
-
-  if (res.ok) return (await res.json()) as T;
-  if (res.status === 401 && authEnabled && typeof window !== "undefined") {
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.assign(`/login?expired=1&next=${next}`);
-  }
-
-  let message = STATUS_MESSAGES[res.status] ?? STATUS_MESSAGES[500];
-  let field: string | undefined;
-  try {
-    const data = await res.json();
-    if (typeof data?.detail === "string") message = data.detail;
-    else if (typeof data?.message === "string") {
-      message = data.message;
-      field = data.field;
+  if (isGet) {
+    const hit = cache.get(cacheKey);
+    if (hit && hit.expiresAt > Date.now()) {
+      return hit.data as T;
     }
-  } catch {
-    /* non-JSON error body: keep the generic message */
+    const pending = inFlight.get(cacheKey);
+    if (pending) {
+      return pending as Promise<T>;
+    }
   }
-  if (res.status >= 500) message = STATUS_MESSAGES[500];
-  throw new ApiError(res.status, message, field);
+
+  const exec = async (): Promise<T> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), init.timeoutMs ?? TIMEOUT_MS);
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
+    if (init.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
+    if (authToken) headers.Authorization = `Bearer ${authToken}`;
+    else if (DEMO_BUSINESS_ID) headers["X-Business-Id"] = DEMO_BUSINESS_ID;
+
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}${path}`, {
+        method,
+        headers,
+        body: init.body === undefined ? undefined : isForm ? (init.body as FormData) : JSON.stringify(init.body),
+        signal: controller.signal,
+        cache: "no-store",
+      });
+    } catch (e) {
+      const aborted = e instanceof DOMException && e.name === "AbortError";
+      throw new ApiError(aborted ? 408 : 0, STATUS_MESSAGES[aborted ? 408 : 0]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.ok) {
+      const data = (await res.json()) as T;
+      if (isGet) {
+        cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+      } else {
+        clearApiCache();
+      }
+      return data;
+    }
+
+    if (!isGet) {
+      clearApiCache();
+    }
+
+    if (res.status === 401 && authEnabled && typeof window !== "undefined") {
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.assign(`/login?expired=1&next=${next}`);
+    }
+
+    let message = STATUS_MESSAGES[res.status] ?? STATUS_MESSAGES[500];
+    let field: string | undefined;
+    try {
+      const data = await res.json();
+      if (typeof data?.detail === "string") message = data.detail;
+      else if (typeof data?.message === "string") {
+        message = data.message;
+        field = data.field;
+      }
+    } catch {
+      /* non-JSON error body: keep the generic message */
+    }
+    if (res.status >= 500) message = STATUS_MESSAGES[500];
+    throw new ApiError(res.status, message, field);
+  };
+
+  if (isGet) {
+    const p = exec().finally(() => {
+      inFlight.delete(cacheKey);
+    });
+    inFlight.set(cacheKey, p);
+    return p;
+  }
+
+  return exec();
 }
 
 export const api = {

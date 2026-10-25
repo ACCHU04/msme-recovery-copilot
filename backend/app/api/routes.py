@@ -630,8 +630,10 @@ def list_advisers(store: Store = Depends(get_store), ctx: AuthContext = Depends(
 
 
 @router.get("/cases/{case_id}/shares")
-def list_case_shares(case_id: str, store: Store = Depends(get_store), bid: str = Depends(current_business_id)):
-    _own_case(store, case_id, bid)
+def list_case_shares(case_id: str, request: Request, store: Store = Depends(get_store),
+                     ctx: AuthContext = Depends(supplier)):
+    if request.app.state.settings.auth_mode != "demo":
+        _own_case(store, case_id, ctx.business_id or "")
     shares = store.select("case_shares", case_id=case_id)
     out = []
     for s in shares:
@@ -648,9 +650,11 @@ def list_case_shares(case_id: str, store: Store = Depends(get_store), bid: str =
 
 
 @router.post("/cases/{case_id}/shares", status_code=201)
-def create_case_share(case_id: str, body: CaseShareIn, store: Store = Depends(get_store),
-                      bid: str = Depends(current_business_id)):
-    _own_case(store, case_id, bid)
+def create_case_share(case_id: str, body: CaseShareIn, request: Request,
+                      store: Store = Depends(get_store),
+                      ctx: AuthContext = Depends(supplier)):
+    if request.app.state.settings.auth_mode != "demo":
+        _own_case(store, case_id, ctx.business_id or "")
     p = store.get("profiles", body.adviser_id)
     if p and (p.get("role") != "adviser" or p.get("approval_status") != "approved"):
         raise HTTPException(422, "Can only share cases with approved advisers.")
@@ -661,11 +665,15 @@ def create_case_share(case_id: str, body: CaseShareIn, store: Store = Depends(ge
 
 
 @router.delete("/cases/{case_id}/shares/{share_id}")
-def delete_case_share(case_id: str, share_id: str, store: Store = Depends(get_store),
-                      bid: str = Depends(current_business_id)):
-    _own_case(store, case_id, bid)
+def delete_case_share(case_id: str, share_id: str, request: Request,
+                      store: Store = Depends(get_store),
+                      ctx: AuthContext = Depends(supplier)):
+    if request.app.state.settings.auth_mode != "demo":
+        _own_case(store, case_id, ctx.business_id or "")
     s = store.get("case_shares", share_id)
-    if s is None or s["case_id"] != case_id:
+    if s is None:
+        return {"deleted": share_id}
+    if s.get("case_id") != case_id:
         raise HTTPException(404, "share not found")
     store.delete("case_shares", share_id)
     return {"deleted": share_id}

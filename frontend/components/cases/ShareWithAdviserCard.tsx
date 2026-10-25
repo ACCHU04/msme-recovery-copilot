@@ -54,10 +54,13 @@ export function ShareWithAdviserCard({ caseId }: { caseId: string }) {
   const handleUnshare = async (shareId: string) => {
     try {
       setSubmitting(true);
+      setError(null);
+      setShares((prev) => prev.filter((s) => s.id !== shareId));
       await api.deleteCaseShare(caseId, shareId);
       await loadData();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to remove share");
+      await loadData();
     } finally {
       setSubmitting(false);
     }
