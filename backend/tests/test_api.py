@@ -1219,3 +1219,28 @@ def test_notifications_test_mocked(client, monkeypatch):
     data = r.json()
     assert data["ok"] is True
     assert data["email_id"] == "test_msg_999"
+
+
+
+def test_supabase_store_adaptive_missing_columns(monkeypatch):
+    from app.store import SupabaseStore
+    import httpx
+
+    store = SupabaseStore("https://example.supabase.co", "dummy_service_key")
+
+    calls = []
+
+    def mock_patch(url, params=None, json=None, headers=None):
+        calls.append(dict(json))
+        req = httpx.Request("PATCH", url)
+        if "description" in json:
+            return httpx.Response(400, request=req, text='{"code":"PGRST204","message":"Could not find the \'description\' column of \'businesses\' in the schema cache"}')
+        return httpx.Response(200, request=req, json=[{"id": "biz-1", "name": json.get("name")}])
+
+    monkeypatch.setattr(store.client, "patch", mock_patch)
+
+    res = store.update("businesses", "biz-1", {"name": "Test Co", "description": "A great co"})
+    assert res is not None
+    assert res["name"] == "Test Co"
+    assert res["description"] == "A great co"
+    assert "description" in store._missing_columns["businesses"]

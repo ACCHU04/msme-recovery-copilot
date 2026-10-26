@@ -10,6 +10,7 @@ Rows are plain dicts with JSON-friendly values (dates and money as strings).
 from __future__ import annotations
 
 import copy
+import re
 import time
 import uuid
 from datetime import datetime, timezone
@@ -569,6 +570,17 @@ class SupabaseStore:
             "invoice_notes": copy.deepcopy(DEMO_ROWS.get("invoice_notes", [])),
             "payment_blockers": copy.deepcopy(DEMO_ROWS.get("payment_blockers", [])),
         }
+        self._fallback_columns: dict[tuple[str, str], dict[str, Any]] = {}
+        self._missing_columns: dict[str, set[str]] = {}
+
+    def _strip_unknown_column(self, table: str, err_text: str, payload: dict) -> str | None:
+        m = re.search(r"Could not find the '([^']+)' column", err_text)
+        if m:
+            col = m.group(1)
+            self._missing_columns.setdefault(table, set()).add(col)
+            if col in payload:
+                return col
+        return None
 
     def _fallback_select(self, table: str, eq: dict[str, Any]) -> list[Row]:
         rows = self._fallback_tables.get(table, [])
@@ -594,7 +606,13 @@ class SupabaseStore:
             if r.status_code == 400 and ("column" in r.text or "schema cache" in r.text):
                 return []
             r.raise_for_status()
-            return r.json()
+            rows = r.json()
+            if self._fallback_columns:
+                for row in rows:
+                    rid = row.get("id")
+                    if rid and (table, rid) in self._fallback_columns:
+                        row.update(self._fallback_columns[(table, rid)])
+            return rows
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404 and table in self._fallback_tables:
                 return self._fallback_select(table, eq)
@@ -608,65 +626,129 @@ class SupabaseStore:
 
     def insert(self, table: str, row: Row) -> Row:
         row = {"id": str(uuid.uuid4()), **row}
-        try:
-            r = self.client.post(f"{self.base}/{table}", json=row,
-                                 headers={"Prefer": "return=representation"})
-            if r.status_code == 404 and table in self._fallback_tables:
-                self._fallback_tables[table].append(copy.deepcopy(row))
-                return row
-            r.raise_for_status()
-            return r.json()[0]
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404 and table in self._fallback_tables:
-                self._fallback_tables[table].append(copy.deepcopy(row))
-                return row
-            raise
+        payload = dict(row)
+        unpersisted: dict[str, Any] = {}
+        for missing in self._missing_columns.get(table, set()):
+            if missing in payload:
+                unpersisted[missing] = payload.pop(missing)
+        while True:
+            try:
+                r = self.client.post(f"{self.base}/{table}", json=payload,
+                                     headers={"Prefer": "return=representation"})
+                if r.status_code == 404 and table in self._fallback_tables:
+                    self._fallback_tables[table].append(copy.deepcopy(row))
+                    return row
+                if r.status_code == 400:
+                    col = self._strip_unknown_column(table, r.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                r.raise_for_status()
+                res = r.json()[0]
+                if unpersisted:
+                    self._fallback_columns.setdefault((table, res["id"]), {}).update(unpersisted)
+                    res.update(unpersisted)
+                return res
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404 and table in self._fallback_tables:
+                    self._fallback_tables[table].append(copy.deepcopy(row))
+                    return row
+                if e.response.status_code == 400:
+                    col = self._strip_unknown_column(table, e.response.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                raise
 
     def update(self, table: str, id: str, patch: Row) -> Row | None:
-        try:
-            r = self.client.patch(f"{self.base}/{table}", params={"id": f"eq.{id}"}, json=patch,
-                                  headers={"Prefer": "return=representation"})
-            if r.status_code == 404 and table in self._fallback_tables:
-                for row in self._fallback_tables[table]:
-                    if row["id"] == id:
-                        row.update(patch)
-                        return copy.deepcopy(row)
-                return None
-            r.raise_for_status()
-            rows = r.json()
-            return rows[0] if rows else None
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404 and table in self._fallback_tables:
-                for row in self._fallback_tables[table]:
-                    if row["id"] == id:
-                        row.update(patch)
-                        return copy.deepcopy(row)
-                return None
-            raise
+        payload = dict(patch)
+        unpersisted: dict[str, Any] = {}
+        for missing in self._missing_columns.get(table, set()):
+            if missing in payload:
+                unpersisted[missing] = payload.pop(missing)
+        while True:
+            try:
+                r = self.client.patch(f"{self.base}/{table}", params={"id": f"eq.{id}"}, json=payload,
+                                      headers={"Prefer": "return=representation"})
+                if r.status_code == 404 and table in self._fallback_tables:
+                    for row in self._fallback_tables[table]:
+                        if row["id"] == id:
+                            row.update(patch)
+                            return copy.deepcopy(row)
+                    return None
+                if r.status_code == 400:
+                    col = self._strip_unknown_column(table, r.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                r.raise_for_status()
+                rows = r.json()
+                if not rows:
+                    return None
+                row = rows[0]
+                if unpersisted:
+                    self._fallback_columns.setdefault((table, id), {}).update(unpersisted)
+                if (table, id) in self._fallback_columns:
+                    row.update(self._fallback_columns[(table, id)])
+                return row
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404 and table in self._fallback_tables:
+                    for row in self._fallback_tables[table]:
+                        if row["id"] == id:
+                            row.update(patch)
+                            return copy.deepcopy(row)
+                    return None
+                if e.response.status_code == 400:
+                    col = self._strip_unknown_column(table, e.response.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                raise
 
     def upsert(self, table: str, row: Row, on_conflict: list[str]) -> Row:
-        try:
-            r = self.client.post(f"{self.base}/{table}", json=row,
-                                 params={"on_conflict": ",".join(on_conflict)},
-                                 headers={"Prefer": "return=representation,resolution=merge-duplicates"})
-            if r.status_code == 404 and table in self._fallback_tables:
-                for r_idx, existing in enumerate(self._fallback_tables[table]):
-                    if all(existing.get(k) == row.get(k) for k in on_conflict):
-                        self._fallback_tables[table][r_idx].update(row)
-                        return copy.deepcopy(self._fallback_tables[table][r_idx])
-                self._fallback_tables[table].append(copy.deepcopy(row))
-                return row
-            r.raise_for_status()
-            return r.json()[0]
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404 and table in self._fallback_tables:
-                for r_idx, existing in enumerate(self._fallback_tables[table]):
-                    if all(existing.get(k) == row.get(k) for k in on_conflict):
-                        self._fallback_tables[table][r_idx].update(row)
-                        return copy.deepcopy(self._fallback_tables[table][r_idx])
-                self._fallback_tables[table].append(copy.deepcopy(row))
-                return row
-            raise
+        payload = dict(row)
+        unpersisted: dict[str, Any] = {}
+        for missing in self._missing_columns.get(table, set()):
+            if missing in payload:
+                unpersisted[missing] = payload.pop(missing)
+        while True:
+            try:
+                r = self.client.post(f"{self.base}/{table}", json=payload,
+                                     params={"on_conflict": ",".join(on_conflict)},
+                                     headers={"Prefer": "return=representation,resolution=merge-duplicates"})
+                if r.status_code == 404 and table in self._fallback_tables:
+                    for r_idx, existing in enumerate(self._fallback_tables[table]):
+                        if all(existing.get(k) == row.get(k) for k in on_conflict):
+                            self._fallback_tables[table][r_idx].update(row)
+                            return copy.deepcopy(self._fallback_tables[table][r_idx])
+                    self._fallback_tables[table].append(copy.deepcopy(row))
+                    return row
+                if r.status_code == 400:
+                    col = self._strip_unknown_column(table, r.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                r.raise_for_status()
+                res = r.json()[0]
+                row_id = res.get("id")
+                if unpersisted and row_id:
+                    self._fallback_columns.setdefault((table, row_id), {}).update(unpersisted)
+                    res.update(unpersisted)
+                return res
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 404 and table in self._fallback_tables:
+                    for r_idx, existing in enumerate(self._fallback_tables[table]):
+                        if all(existing.get(k) == row.get(k) for k in on_conflict):
+                            self._fallback_tables[table][r_idx].update(row)
+                            return copy.deepcopy(self._fallback_tables[table][r_idx])
+                    self._fallback_tables[table].append(copy.deepcopy(row))
+                    return row
+                if e.response.status_code == 400:
+                    col = self._strip_unknown_column(table, e.response.text, payload)
+                    if col:
+                        unpersisted[col] = payload.pop(col)
+                        continue
+                raise
 
     def delete(self, table: str, id: str) -> bool:
         try:
